@@ -1,0 +1,19 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Spring Initializr scaffold noise, not useful once the project is real
+services/*/HELP.md
+
+# Real lab credentials -- copy the matching .example.yaml file and fill in
+# your own values; never commit the real ones, even lab-only throwaway ones.
+deploy/data/postgres-secret.yaml
+deploy/data/postgres-init-configmap.yaml

@@ -1,0 +1,20 @@
+# The kind Docker network is 172.20.0.0/16; Docker's IPAM hands out node
+# IPs from the low end of that range, so 172.20.255.200-250 is a safe slice
+# to carve out for MetalLB to assign as real LoadBalancer IPs.
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: kind-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 172.20.255.200-172.20.255.250
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: kind-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - kind-pool

@@ -1,0 +1,779 @@
+<title>OrderFlow Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#F4F5F9;
+    --surface:#FFFFFF;
+    --surface-2:#E9EBF3;
+    --line:#D6D9E6;
+    --ink:#1C2033;
+    --ink-muted:#63698A;
+    --ink-faint:#8B90AC;
+    --accent:#3D4EDB;
+    --accent-ink:#2C3AB8;
+    --accent-tint:#E7E9FB;
+
+    --ok:#1F8A6E;
+    --ok-tint:#E4F4EF;
+    --warn:#B9860F;
+    --warn-tint:#FBF1DC;
+    --crit:#C43B3B;
+    --crit-tint:#FBE9E9;
+    --info:#3E8FA6;
+    --info-tint:#E4F2F5;
+
+    --diagram-bg:#FCFCFE;
+    --diagram-ink:#1C2033;
+    --diagram-line:#C7CBDD;
+
+    --font-display:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0F1220;
+      --surface:#171B2E;
+      --surface-2:#1F2440;
+      --line:#2E3457;
+      --ink:#E8E9F5;
+      --ink-muted:#A3A8CC;
+      --ink-faint:#767C9E;
+      --accent:#8590FF;
+      --accent-ink:#AEB6FF;
+      --accent-tint:#242A52;
+
+      --ok:#42C79B;
+      --ok-tint:#173229;
+      --warn:#E3B33D;
+      --warn-tint:#332C13;
+      --crit:#E3696C;
+      --crit-tint:#3A1E20;
+      --info:#5FB4CB;
+      --info-tint:#152C33;
+
+      --diagram-bg:#FCFCFE;
+      --diagram-ink:#1C2033;
+      --diagram-line:#C7CBDD;
+    }
+  }
+
+  :root[data-theme="dark"]{
+    --bg:#0F1220;
+    --surface:#171B2E;
+    --surface-2:#1F2440;
+    --line:#2E3457;
+    --ink:#E8E9F5;
+    --ink-muted:#A3A8CC;
+    --ink-faint:#767C9E;
+    --accent:#8590FF;
+    --accent-ink:#AEB6FF;
+    --accent-tint:#242A52;
+
+    --ok:#42C79B;
+    --ok-tint:#173229;
+    --warn:#E3B33D;
+    --warn-tint:#332C13;
+    --crit:#E3696C;
+    --crit-tint:#3A1E20;
+    --info:#5FB4CB;
+    --info-tint:#152C33;
+
+    --diagram-bg:#FCFCFE;
+    --diagram-ink:#1C2033;
+    --diagram-line:#C7CBDD;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--accent-tint); color:var(--ink); }
+
+  a{ color:var(--accent-ink); }
+  a:focus-visible, button:focus-visible, summary:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+
+  .page{
+    max-width:920px;
+    margin:0 auto;
+    padding:64px 24px 96px;
+  }
+
+  header.masthead{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    padding-bottom:36px;
+    margin-bottom:44px;
+    border-bottom:1px solid var(--line);
+  }
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--accent-ink);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .eyebrow::before{
+    content:"";
+    width:7px; height:7px;
+    background:var(--accent);
+    display:inline-block;
+  }
+  h1{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:clamp(2rem, 4vw, 2.7rem);
+    line-height:1.1;
+    letter-spacing:-.01em;
+    margin:0;
+    text-wrap:balance;
+  }
+  .masthead p.dek{
+    font-size:1.08rem;
+    color:var(--ink-muted);
+    max-width:62ch;
+    margin:0;
+    text-wrap:pretty;
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 22px;
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    color:var(--ink-faint);
+    margin-top:6px;
+  }
+  .meta-row b{ color:var(--ink-muted); font-weight:500; }
+
+  section{ margin-bottom:60px; }
+  section > h2{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:1.5rem;
+    letter-spacing:-.005em;
+    margin:0 0 8px;
+    text-wrap:balance;
+  }
+  section > .section-dek{
+    color:var(--ink-muted);
+    max-width:68ch;
+    margin:0 0 24px;
+  }
+  h3{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:1.05rem;
+    margin:0 0 10px;
+  }
+  p{ margin:0 0 14px; max-width:70ch; }
+  ul, ol{ margin:0 0 14px; padding-left:1.3em; }
+  li{ margin-bottom:6px; max-width:66ch; }
+  code{
+    font-family:var(--font-mono);
+    font-size:.9em;
+    background:var(--surface-2);
+    padding:.12em .4em;
+    border-radius:3px;
+  }
+
+  .diagram-wrap{
+    background:var(--diagram-bg);
+    border:1px solid var(--diagram-line);
+    border-radius:8px;
+    padding:20px;
+    overflow-x:auto;
+    margin:18px 0 8px;
+    color:var(--diagram-ink);
+  }
+  .diagram-caption{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--ink-faint);
+    margin:0 0 20px;
+  }
+
+  /* Four pillars grid */
+  .pillars{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:16px;
+  }
+  @media (max-width:680px){ .pillars{ grid-template-columns:1fr; } }
+  .pillar{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:22px 22px 20px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .pillar .pillar-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .pillar .pillar-head h3{ margin:0; }
+  .pillar-tag{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+  }
+  .pillar .block-label{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    margin:4px 0 2px;
+  }
+  .pillar ul{ margin:0 0 4px; padding-left:1.1em; }
+  .pillar li{ font-size:.94rem; }
+  .pillar .have li::marker{ color:var(--ok); }
+  .pillar .gap li::marker{ color:var(--warn); }
+
+  /* Gap register table */
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:8px; }
+  table{
+    border-collapse:collapse;
+    width:100%;
+    min-width:760px;
+    background:var(--surface);
+  }
+  thead th{
+    text-align:left;
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    background:var(--surface-2);
+    padding:11px 14px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:13px 14px;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+    font-size:.92rem;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  td.id{ font-family:var(--font-mono); color:var(--ink-faint); font-size:.85rem; white-space:nowrap; }
+  td.gap-name{ font-weight:500; min-width:190px; }
+  td.phase{ font-family:var(--font-mono); font-size:.82rem; color:var(--ink-muted); white-space:nowrap; }
+
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    padding:3px 9px;
+    border-radius:100px;
+    white-space:nowrap;
+  }
+  .chip::before{ content:""; width:6px; height:6px; border-radius:50%; }
+  .chip.crit{ background:var(--crit-tint); color:var(--crit); }
+  .chip.crit::before{ background:var(--crit); }
+  .chip.high{ background:var(--warn-tint); color:var(--warn); }
+  .chip.high::before{ background:var(--warn); }
+  .chip.med{ background:var(--info-tint); color:var(--info); }
+  .chip.med::before{ background:var(--info); }
+  .chip.stretch{ background:transparent; color:var(--ink-faint); border:1px solid var(--line); }
+  .chip.stretch::before{ background:var(--ink-faint); }
+  .chip.leanc{ background:var(--accent-tint); color:var(--accent-ink); }
+  .chip.leanc::before{ background:var(--accent); }
+  .chip.leana{ background:var(--info-tint); color:var(--info); }
+  .chip.leana::before{ background:var(--info); }
+
+  .legend{
+    display:flex; flex-wrap:wrap; gap:16px;
+    font-size:12.5px; color:var(--ink-muted);
+    margin:14px 0 18px;
+    align-items:center;
+  }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+
+  /* Roadmap deltas */
+  .deltas{ display:flex; flex-direction:column; gap:0; border-top:1px solid var(--line); }
+  .delta{
+    display:grid;
+    grid-template-columns:120px 1fr;
+    gap:18px;
+    padding:16px 0;
+    border-bottom:1px solid var(--line);
+  }
+  @media (max-width:600px){ .delta{ grid-template-columns:1fr; gap:6px; } }
+  .delta .phase-tag{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--accent-ink);
+    padding-top:2px;
+  }
+  .delta p{ margin:0; font-size:.95rem; color:var(--ink); }
+
+  .consistency-note{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:4px;
+    padding:18px 20px;
+    margin-top:6px;
+  }
+  .consistency-note h3{ margin-bottom:8px; }
+  .consistency-note p:last-child{ margin-bottom:0; }
+
+  /* Redis verdict cards */
+  .verdict-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin-bottom:8px;
+  }
+  @media (max-width:680px){ .verdict-grid{ grid-template-columns:1fr; } }
+  .verdict-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:20px 22px;
+  }
+  .verdict-card.yes{ border-left:3px solid var(--ok); }
+  .verdict-card.no{ border-left:3px solid var(--ink-faint); }
+  .verdict-card .verdict-label{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    margin-bottom:10px;
+    display:block;
+  }
+  .verdict-card.yes .verdict-label{ color:var(--ok); }
+  .verdict-card.no .verdict-label{ color:var(--ink-faint); }
+  .verdict-card ul{ margin:0; padding-left:1.1em; }
+  .verdict-card li{ font-size:.92rem; margin-bottom:10px; }
+  .verdict-card li:last-child{ margin-bottom:0; }
+
+  footer{
+    border-top:1px solid var(--line);
+    padding-top:24px;
+    color:var(--ink-faint);
+    font-size:12.5px;
+    font-family:var(--font-mono);
+  }
+
+  @media (prefers-reduced-motion:no-preference){
+    section{ scroll-margin-top:24px; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">System design — v3</div>
+    <h1>OrderFlow Blueprint</h1>
+    <p class="dek">
+      A flash-sale checkout platform used as a hands-on lab for distributed-systems
+      scale: what's already covered by the build plan, and where it falls short of
+      an actually scalable, consistent, fault-tolerant, available system.
+    </p>
+    <div class="meta-row">
+      <span><b>Cluster</b> local kind, 1 control-plane + 2 workers</span>
+      <span><b>Mesh</b> Istio</span>
+      <span><b>Services</b> orders · inventory · payment · notifications</span>
+      <span><b>Stack</b> Spring Boot · Postgres · Kafka · Redis (targeted use only)</span>
+    </div>
+  </header>
+
+  <section id="architecture">
+    <h2>Architecture overview</h2>
+    <p class="section-dek">
+      Four namespaced services behind an Istio ingress gateway, one synchronous
+      hop (stock reservation), and one asynchronous backbone (Kafka) carrying
+      the payment saga and its downstream notifications.
+    </p>
+
+    <div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TB
+  client(["Client"])
+
+  subgraph istio["istio-system"]
+    gw["Ingress Gateway"]
+  end
+
+  subgraph ordersns["ns: orders"]
+    orders["orders\n(checkout · saga orchestrator · outbox relay)"]
+  end
+
+  subgraph invns["ns: inventory"]
+    inventory["inventory\n(reserve / release stock)"]
+  end
+
+  subgraph payns["ns: payment"]
+    payment["payment\n(simulated processing)"]
+  end
+
+  subgraph notifns["ns: notifications"]
+    notifications["notifications\n(consumer)"]
+  end
+
+  subgraph kafkans["ns: kafka"]
+    kafka[("Kafka\nPaymentRequested / PaymentCompleted /\nPaymentFailed / OrderPlaced / OrderCancelled")]
+  end
+
+  subgraph datans["ns: data"]
+    pg[("Postgres\norders · inventory · payment schemas")]
+  end
+
+  subgraph cachens["ns: cache"]
+    redis[("Redis\nidempotency fast-path (G17)\nrate-limit counters (G18, optional)")]
+  end
+
+  client --> gw --> orders
+  orders -- "sync REST\nreserve / release" --> inventory
+  orders -- "outbox relay\npublish" --> kafka
+  kafka -- consume --> payment
+  payment -- publish result --> kafka
+  kafka -- consume result --> orders
+  kafka -- consume --> notifications
+  orders --- pg
+  inventory --- pg
+  payment --- pg
+  inventory -. idempotency check .-> redis
+  payment -. idempotency check .-> redis
+  gw -. "rate-limit counters (optional)" .-> redis
+</pre>
+    </div>
+    <p class="diagram-caption">Solid arrows = request path. Dashed = fast-path/optional. Namespace boundaries double as NetworkPolicy boundaries (default-deny + explicit allow).</p>
+  </section>
+
+  <section id="saga">
+    <h2>The checkout saga</h2>
+    <p class="section-dek">
+      Stock reservation is synchronous and blocking — checkout needs to know
+      immediately if the item exists. Everything downstream of a successful
+      reservation is an orchestrated saga over Kafka, with a compensating
+      action if payment fails.
+    </p>
+
+    <div class="diagram-wrap">
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client
+  participant O as orders
+  participant I as inventory
+  participant DB as orders DB (outbox)
+  participant K as Kafka
+  participant P as payment
+  participant N as notifications
+
+  C->>O: POST /checkout
+  O->>I: reserve(sku, qty)  [sync]
+  I-->>O: reserved
+
+  O->>DB: INSERT Order(AWAITING_PAYMENT)\n+ outbox row: PaymentRequested  (1 txn)
+  O->>K: relay publishes PaymentRequested
+  K->>P: consume PaymentRequested
+
+  alt payment succeeds
+    P->>K: publish PaymentCompleted
+    K->>O: consume result
+    O->>DB: Order -> CONFIRMED\n+ outbox row: OrderPlaced
+    O->>K: relay publishes OrderPlaced
+    K->>N: consume OrderPlaced
+    N-->>C: confirmation sent
+  else payment fails
+    P->>K: publish PaymentFailed
+    K->>O: consume result
+    O->>I: release(sku, qty)  [compensating, sync]
+    O->>DB: Order -> CANCELLED\n+ outbox row: OrderCancelled
+    O->>K: relay publishes OrderCancelled
+    K->>N: consume OrderCancelled
+    N-->>C: cancellation sent
+  end
+</pre>
+    </div>
+    <p class="diagram-caption">The outbox row and the order-state change commit in one local transaction — the Kafka publish can never be lost or fabricated relative to that state.</p>
+  </section>
+
+  <section id="redis">
+    <h2>Where Redis fits — and where it doesn't</h2>
+    <p class="section-dek">
+      Not added by default. Two places in this system have a genuine job for
+      it; everywhere else, adding it would either do nothing or reintroduce a
+      race the design already closes.
+    </p>
+
+    <div class="verdict-grid">
+      <div class="verdict-card yes">
+        <span class="verdict-label">Earns its place</span>
+        <ul>
+          <li><b>Idempotency fast-path (G17, and G2's implementation).</b> <code>inventory</code>'s <code>/reserve</code>/<code>/release</code> and <code>payment</code>'s Kafka consumer both need to recognize "already handled this one" — on an Istio retry, or on a redelivered message after a consumer-group rebalance. A Redis <code>SETNX</code>-with-TTL check answers that in under a millisecond without touching Postgres. Postgres still holds a unique constraint on the same key as the durable backstop, so a Redis restart never silently reopens a closed door — Redis just saves the round-trip on the common case, on the exact database that's already a named SPOF (G6) during the highest-traffic moment.</li>
+          <li><b>Shared rate-limit counters (G18) — only if it matters.</b> Once the ingress gateway runs 2+ replicas (G14), an Envoy local rate limit is enforced per-replica: the effective ceiling becomes roughly limit × replica count, not the configured number. If a precise global limit matters, Envoy's Rate Limit Service backed by Redis as the shared counter store is the standard fix. If "roughly N× replicas, still sheds load before the system falls over" is good enough for a learning cluster, this is skippable — see G18 below, presented as a choice, not a mandate.</li>
+        </ul>
+      </div>
+      <div class="verdict-card no">
+        <span class="verdict-label">Not needed here</span>
+        <ul>
+          <li><b>Caching the inventory stock count for the reservation decision.</b> The reservation has to read the live value at write time — that's the entire point of G1's atomic conditional update. A cache in front of that path reintroduces the stale-read race G1 exists to close.</li>
+          <li><b>A stock/catalog read cache.</b> Legitimate pattern in general — but there's no catalog/browse endpoint in this system (no "show approximate stock while shopping" read path) for it to sit in front of. Worth adding if that endpoint ever exists; not before.</li>
+          <li><b>Pub/sub fan-out.</b> No real-time/WebSocket surface here — nothing to fan out to multiple pods, unlike a chat/matchmaking system.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="pillars">
+    <h2>Four pillars: what's covered, what's missing</h2>
+    <p class="section-dek">
+      Scalability, consistency, fault tolerance, and availability pull against
+      each other, so each gets checked on its own terms rather than assumed
+      from "we used Kubernetes and a mesh."
+    </p>
+
+    <div class="pillars">
+
+      <div class="pillar">
+        <div class="pillar-head"><h3>Scalability</h3><span class="pillar-tag">throughput under load</span></div>
+        <div class="block-label">Already in the plan</div>
+        <ul class="have">
+          <li>HPA on <code>orders</code>, replicas load-balanced via ClusterIP + kube-proxy</li>
+          <li>Stateless services — any replica can serve any request</li>
+          <li>Async hop via Kafka absorbs bursty/slow downstream work</li>
+        </ul>
+        <div class="block-label">Gaps</div>
+        <ul class="gap">
+          <li>Kafka topics default to 1 partition — <code>payment</code> and <code>notifications</code> can't scale consumers horizontally without more partitions (<a href="#g4">G4</a>)</li>
+          <li>No rate limiting at the edge — HPA reacts in seconds, a 10x spike arrives in one (<a href="#g13">G13</a>)</li>
+          <li>Once the ingress gateway is HA (G14), a per-replica rate limit quietly becomes "limit × replica count" instead of the configured number (<a href="#g18">G18</a>)</li>
+        </ul>
+      </div>
+
+      <div class="pillar">
+        <div class="pillar-head"><h3>Consistency</h3><span class="pillar-tag">correctness across services</span></div>
+        <div class="block-label">Already in the plan</div>
+        <ul class="have">
+          <li>Outbox pattern makes the DB-write-plus-publish step atomic</li>
+          <li>Saga gives an explicit, inspectable state machine per order</li>
+        </ul>
+        <div class="block-label">Gaps</div>
+        <ul class="gap">
+          <li><b>Overselling</b>: concurrent reservations against the same SKU during a flash sale can both read "in stock" before either writes — needs an atomic conditional update, not read-then-write (<a href="#g1">G1</a>)</li>
+          <li>Istio's own retry policy on <code>orders → inventory</code> can re-send a reservation call — <code>/reserve</code> and <code>/release</code> must be idempotent or a retry double-reserves (<a href="#g2">G2</a>)</li>
+          <li>A Kafka consumer-group rebalance can redeliver a message <code>payment</code> or <code>notifications</code> already processed — those consumers aren't idempotent yet, only the REST calls are (<a href="#g17">G17</a>)</li>
+          <li>No documented consistency model — which parts are strongly consistent (a service's own transaction) vs. eventually consistent (across the saga) is implicit, not written down (<a href="#g16">G16</a>)</li>
+        </ul>
+      </div>
+
+      <div class="pillar">
+        <div class="pillar-head"><h3>Fault tolerance</h3><span class="pillar-tag">surviving a component failing</span></div>
+        <div class="block-label">Already in the plan</div>
+        <ul class="have">
+          <li>Istio retries/timeouts/circuit-breaking on the <code>inventory</code> call</li>
+          <li>Multi-node kind cluster — pods <em>can</em> spread across nodes</li>
+        </ul>
+        <div class="block-label">Gaps</div>
+        <ul class="gap">
+          <li>Single-broker Kafka is a hard single point of failure — no replication factor possible with one broker (<a href="#g7">G7</a>)</li>
+          <li>Shared single Postgres instance is a SPOF for three services at once (<a href="#g6">G6</a>)</li>
+          <li>No dead-letter topic — one malformed message can wedge a consumer indefinitely (<a href="#g5">G5</a>)</li>
+          <li>No pod anti-affinity — nothing stops all replicas of a service landing on the same node (<a href="#g9">G9</a>)</li>
+        </ul>
+      </div>
+
+      <div class="pillar">
+        <div class="pillar-head"><h3>Availability</h3><span class="pillar-tag">staying reachable during change</span></div>
+        <div class="block-label">Already in the plan</div>
+        <ul class="have">
+          <li>Canary rollout limits blast radius of a bad deploy</li>
+          <li>Multiple replicas behind a Service already give redundancy</li>
+        </ul>
+        <div class="block-label">Gaps</div>
+        <ul class="gap">
+          <li>No readiness/liveness probes — K8s can't tell a hung pod from a healthy one, or hold traffic until warm-up finishes (<a href="#g8">G8</a>)</li>
+          <li>No resource requests/limits — scheduler placement and HPA's CPU% are both undefined without them (<a href="#g10">G10</a>)</li>
+          <li>No PodDisruptionBudget — a node drain or rolling update can take every replica of a service down at once (<a href="#g11">G11</a>)</li>
+          <li>No graceful shutdown handling — in-flight requests and outbox work can be cut mid-write on pod termination (<a href="#g12">G12</a>)</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <section id="failures">
+    <h2>Failure scenarios, and what actually handles them</h2>
+    <p class="section-dek">
+      Every mechanism named elsewhere in this doc exists to answer one row of
+      this table. If a failure mode isn't here, it isn't handled yet.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Trigger</th><th>Detected by</th><th>Mechanism</th><th>Outcome</th><th>Gap(s)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>One <code>inventory</code> replica turns slow/error-prone</td><td>Istio outlier detection (consecutive 5xx)</td><td>Host ejected from the LB pool; <code>orders</code> retries a healthy replica within the timeout budget</td><td>Checkout still succeeds, caller barely notices</td><td class="phase">Phase 4</td></tr>
+          <tr><td>All <code>inventory</code> replicas down</td><td>Retries exhausted within timeout</td><td>Circuit stays open, <code>orders</code> fails fast</td><td>Client gets a clear error quickly instead of a hang</td><td class="phase">Phase 4</td></tr>
+          <tr><td><code>payment</code> pod dies mid-message, before its offset commits</td><td>Kafka consumer-group rebalance</td><td>Partition reassigned to a surviving replica; message redelivered</td><td>Idempotent consumer recognizes the duplicate — no double <code>PaymentCompleted</code></td><td class="phase"><a href="#g17">G17</a></td></tr>
+          <tr><td>One of 3 Kafka broker pods dies</td><td>ISR shrinks by one</td><td>Replication factor 3 — remaining brokers hold full data, clients reconnect automatically</td><td>Saga proceeds uninterrupted</td><td class="phase"><a href="#g7">G7</a></td></tr>
+          <tr><td><code>orders</code> pod dies right after the outbox write, before the relay publishes</td><td>Pod restarts / another replica takes over</td><td>Scheduled relay finds the unpublished outbox row on its next poll</td><td>Event published exactly once — nothing lost, nothing duplicated</td><td class="phase">Outbox</td></tr>
+          <tr><td>kind worker node drained</td><td>PodDisruptionBudget</td><td>Eviction blocked until <code>minAvailable</code> replicas exist elsewhere</td><td>At least one replica of each service stays up throughout</td><td class="phase"><a href="#g11">G11</a></td></tr>
+          <tr><td>Flash-sale spike outruns HPA's reaction time</td><td>Istio local rate limit at ingress</td><td>Excess requests get <code>429</code> instead of queuing until pods fall over</td><td>System degrades on purpose instead of cascading</td><td class="phase"><a href="#g13">G13</a></td></tr>
+          <tr><td><code>orders</code> v2 canary shows elevated error rate mid-rollout</td><td>Canary Grafana dashboard, split by <code>version</code></td><td>VirtualService weight shifted back to v1 (manual or Jenkins-gated)</td><td>Blast radius stays capped at the canary's traffic slice</td><td class="phase">Phase 5 / 7</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:32px;">The circuit breaker, as a state machine</h3>
+    <p class="section-dek">
+      What Istio's <code>DestinationRule</code> outlier detection actually does to the
+      <code>orders → inventory</code> call, mapped onto the classic circuit-breaker states.
+    </p>
+    <div class="diagram-wrap">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> Closed
+  Closed --> Closed: request succeeds
+  Closed --> Open: consecutive 5xx reaches threshold
+  Open --> Open: new requests fail fast, host ejected from LB pool
+  Open --> HalfOpen: ejection window elapses
+  HalfOpen --> Closed: trial request succeeds
+  HalfOpen --> Open: trial request fails
+</pre>
+    </div>
+    <p class="diagram-caption">Ejection is per-host, not per-service — with 3 <code>inventory</code> replicas, one tripped host doesn't stop the other two from serving.</p>
+  </section>
+
+  <section id="cap">
+    <h2>CAP trade-off, per hop</h2>
+    <p class="section-dek">
+      "This system is AP" or "this system is CP" is the wrong question — the
+      answer differs by which call you're looking at. Under a network
+      partition, here's what each hop actually gives up.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Interaction</th><th>Favors</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>orders → inventory</code> (sync reserve)</td><td><span class="chip leanc">Consistency</span></td><td>Must know the real stock level right now; if <code>inventory</code> is unreachable, checkout fails fast rather than guessing and risking oversell</td></tr>
+          <tr><td><code>inventory</code>'s stock row itself</td><td><span class="chip leanc">Consistency</span></td><td>Atomic conditional update, single row — no eventual state allowed here, that's the entire point of G1</td></tr>
+          <tr><td><code>orders → payment</code> (saga, via Kafka)</td><td><span class="chip leana">Availability</span></td><td>If <code>payment</code> is unreachable, the order sits <code>AWAITING_PAYMENT</code> rather than blocking or failing outright — resolved later by the saga</td></tr>
+          <tr><td><code>orders → notifications</code> (via Kafka)</td><td><span class="chip leana">Availability</span></td><td>A notification can lag arbitrarily; it never blocks order completion</td></tr>
+          <tr><td>Kafka replication (RF 3, <code>min.insync.replicas=2</code>)</td><td><span class="chip leanc">Consistency</span></td><td>Tolerates losing 1 broker with zero data loss and no write pause; losing 2 blocks writes rather than silently accepting them unsafely</td></tr>
+          <tr><td>Rate limiting at the ingress (G13/G18)</td><td><span class="chip leana">Availability</span></td><td>Individual requests are sacrificed (<code>429</code>) specifically to keep the rest of the system responsive</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="consistency-note">
+      <h3>What's strong, what's eventual</h3>
+      <p>
+        <b>Strong consistency</b> exists only inside a single service's own
+        transaction: an order's state change and its outbox row commit
+        together, atomically, inside <code>orders</code>' database. Same for
+        <code>inventory</code>'s stock decrement once G1 is fixed.
+      </p>
+      <p>
+        <b>Everything across services is eventually consistent.</b> Between
+        "payment requested" and "payment resolved," an order legitimately sits
+        in <code>AWAITING_PAYMENT</code> — that's not a bug, it's the saga
+        doing its job. This system chooses <b>availability over immediate
+        consistency</b> during a downstream partition, and recovers
+        correctness later via the saga's compensation path.
+        <code>docs/07-saga-and-outbox.md</code> should say this in those
+        words — it's the one paragraph that explains the whole architecture's
+        CAP trade-off.
+      </p>
+    </div>
+  </section>
+
+  <section id="gaps">
+    <h2>Gap register</h2>
+    <p class="section-dek">
+      Eighteen gaps, found by pushing on each pillar above. Severity reflects
+      how badly the system fails without the fix — not how much work it is.
+    </p>
+
+    <div class="legend">
+      <span class="chip crit">Critical</span> breaks correctness or comes back down under real load
+      <span class="chip high">High</span> needed for a genuine fault-tolerant/available claim
+      <span class="chip med">Medium</span> real gap, smaller blast radius
+      <span class="chip stretch">Stretch</span> documented trade-off, fine to defer
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Gap</th><th>Fix</th><th>Severity</th><th>Lands in</th></tr>
+        </thead>
+        <tbody>
+          <tr id="g1"><td class="id">G1</td><td class="gap-name">Overselling under concurrent reservation</td><td>Atomic conditional update (<code>UPDATE ... SET stock = stock - :qty WHERE stock >= :qty</code>) or JPA <code>@Version</code> optimistic locking instead of read-then-write</td><td><span class="chip crit">Critical</span></td><td class="phase">Phase 1</td></tr>
+          <tr id="g2"><td class="id">G2</td><td class="gap-name">Non-idempotent reserve/release</td><td>Client-supplied idempotency key on checkout; dedup table keyed on it in <code>inventory</code></td><td><span class="chip crit">Critical</span></td><td class="phase">Phase 1</td></tr>
+          <tr id="g8"><td class="id">G8</td><td class="gap-name">No readiness/liveness probes</td><td>Wire K8s probes to Spring Boot Actuator's <code>/actuator/health/{readiness,liveness}</code></td><td><span class="chip crit">Critical</span></td><td class="phase">Phase 1</td></tr>
+          <tr id="g10"><td class="id">G10</td><td class="gap-name">No resource requests/limits</td><td>Set CPU/memory requests+limits on every Deployment — required for correct HPA % and scheduler placement</td><td><span class="chip high">High</span></td><td class="phase">Phase 1</td></tr>
+          <tr id="g12"><td class="id">G12</td><td class="gap-name">No graceful shutdown</td><td><code>terminationGracePeriodSeconds</code> + <code>preStop</code> sleep + Spring Boot graceful shutdown so in-flight requests and outbox writes finish before SIGKILL</td><td><span class="chip high">High</span></td><td class="phase">Phase 1 / 7</td></tr>
+          <tr id="g3"><td class="id">G3</td><td class="gap-name">Outbox publish isn't durability-hardened</td><td>Kafka producer <code>acks=all</code> + <code>enable.idempotence=true</code> on the outbox relay — otherwise Outbox's own guarantee leaks at the last hop</td><td><span class="chip high">High</span></td><td class="phase">Phase 2</td></tr>
+          <tr id="g4"><td class="id">G4</td><td class="gap-name">Single-partition Kafka topics</td><td>3+ partitions on saga topics so <code>payment</code>/<code>notifications</code> can run multiple consumer replicas in the same group</td><td><span class="chip high">High</span></td><td class="phase">Phase 2 / 6</td></tr>
+          <tr id="g7"><td class="id">G7</td><td class="gap-name">Single-broker Kafka is a SPOF</td><td>3-broker Kafka via Strimzi, replication factor 3, <code>min.insync.replicas=2</code> — feasible even on local kind</td><td><span class="chip high">High</span></td><td class="phase">Phase 2</td></tr>
+          <tr id="g11"><td class="id">G11</td><td class="gap-name">No PodDisruptionBudget</td><td><code>minAvailable</code> PDB per service so a node drain/rolling update can't take every replica down together</td><td><span class="chip high">High</span></td><td class="phase">Phase 4 / 6</td></tr>
+          <tr id="g5"><td class="id">G5</td><td class="gap-name">No dead-letter handling</td><td>DLQ topic per consumer for poison messages, so one bad payload can't wedge a partition</td><td><span class="chip med">Medium</span></td><td class="phase">Phase 2</td></tr>
+          <tr id="g9"><td class="id">G9</td><td class="gap-name">No pod anti-affinity</td><td><code>podAntiAffinity</code> so a service's replicas spread across the 2 kind worker nodes instead of stacking on one</td><td><span class="chip med">Medium</span></td><td class="phase">Phase 1</td></tr>
+          <tr id="g14"><td class="id">G14</td><td class="gap-name">Istio control plane not HA</td><td><code>istiod</code> and ingress gateway at 2+ replicas — a single-pod mesh control plane undercuts the "fault tolerant" claim</td><td><span class="chip med">Medium</span></td><td class="phase">Phase 4</td></tr>
+          <tr id="g15"><td class="id">G15</td><td class="gap-name">No trace context across Kafka hops</td><td>Propagate order ID / trace ID via Kafka message headers — Istio sidecars trace HTTP automatically, not Kafka</td><td><span class="chip med">Medium</span></td><td class="phase">Phase 2 / 4</td></tr>
+          <tr id="g16"><td class="id">G16</td><td class="gap-name">Consistency model undocumented</td><td>Write the strong-vs-eventual, availability-over-consistency statement above into <code>docs/07-saga-and-outbox.md</code></td><td><span class="chip med">Medium</span></td><td class="phase">Phase 2 (docs)</td></tr>
+          <tr id="g13"><td class="id">G13</td><td class="gap-name">No rate limiting / load shedding</td><td>Istio local rate limit at the ingress gateway so the system degrades on purpose (429s) instead of falling over when a spike outruns HPA</td><td><span class="chip med">Medium</span></td><td class="phase">Phase 6</td></tr>
+          <tr id="g6"><td class="id">G6</td><td class="gap-name">Shared single Postgres instance is a SPOF</td><td>Primary + streaming replica, or split per-service instances — real fix, meaningfully more infra for a local lab</td><td><span class="chip stretch">Stretch</span></td><td class="phase">Phase 8</td></tr>
+          <tr id="g17"><td class="id">G17</td><td class="gap-name">Kafka redelivery isn't handled idempotently</td><td>Dedup <code>payment</code>/<code>notifications</code> processing by order ID + event type (Redis fast-path, Postgres unique constraint as backstop — see <a href="#redis">Redis</a>); use <code>CooperativeStickyAssignor</code> so rebalances move only the affected partitions, not the whole group</td><td><span class="chip high">High</span></td><td class="phase">Phase 2</td></tr>
+          <tr id="g18"><td class="id">G18</td><td class="gap-name">Rate limit becomes per-replica once the gateway is HA</td><td>Either: accept "~limit × replica count" as a documented trade-off (fine for a learning cluster), or add Envoy's Rate Limit Service backed by Redis as a shared counter store for a true global limit — a choice, not a mandate</td><td><span class="chip med">Medium</span></td><td class="phase">Phase 6</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="deltas">
+    <h2>What this changes in the roadmap</h2>
+    <p class="section-dek">
+      No new phases — these fold into the existing eight. The plan file should
+      be updated to reflect this before implementation starts.
+    </p>
+    <div class="deltas">
+      <div class="delta"><div class="phase-tag">Phase 1</div><p>Add: atomic stock update (G1), idempotency key + dedup (G2), Actuator-backed readiness/liveness probes (G8), resource requests/limits (G10), pod anti-affinity (G9), graceful shutdown config (G12).</p></div>
+      <div class="delta"><div class="phase-tag">Phase 2</div><p>Add: 3-broker Kafka via Strimzi with replication factor 3 (G7), 3+ partitions on saga topics (G4), idempotent/acks=all outbox producer (G3), dead-letter topics (G5), trace-ID propagation via headers (G15), explicit consistency-model writeup (G16), idempotent Kafka consumers for `payment`/`notifications` backed by Redis + a Postgres unique-constraint backstop (G17), `CooperativeStickyAssignor` on all consumer groups.</p></div>
+      <div class="delta"><div class="phase-tag">Phase 4</div><p>Add: istiod + ingress gateway at 2+ replicas (G14), PodDisruptionBudgets alongside the resilience testing already planned (G11).</p></div>
+      <div class="delta"><div class="phase-tag">Phase 6</div><p>Add: Istio rate limiting at the edge as a companion to HPA, so the flash-sale story includes deliberate degradation, not just scaling (G13). Verify partitioned consumers (G4) actually scale out under the same load test, and consciously decide whether the per-replica rate limit needs to become a true global limit via Redis-backed RLS (G18) or stays a documented approximation.</p></div>
+      <div class="delta"><div class="phase-tag">Phase 8</div><p>Add: Postgres primary + replica, or per-service instances, as the remaining named SPOF (G6) — correctly scoped as a stretch given local kind resource limits.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    system_scale / OrderFlow — companion to the build plan at ~/.claude/plans/hey-i-have-been-immutable-eagle.md
+  </footer>
+
+</div>

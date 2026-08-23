@@ -1,0 +1,28 @@
+# Multi-node kind cluster for OrderFlow: 1 control-plane + 2 workers, so
+# replica distribution and pod anti-affinity (G9) are actually visible
+# instead of everything landing on a single node.
+#
+# The default CNI (kindnetd) does not enforce NetworkPolicy at all -- the
+# objects would apply but do nothing. disableDefaultCNI is set so Calico can
+# be installed instead (see infra/registry/setup.sh), which is what actually
+# makes namespace-scoped NetworkPolicy a real boundary. podSubnet matches
+# Calico's own manifest default (192.168.0.0/16) so no CIDR patching is
+# needed on the Calico side.
+#
+# The containerd mirror config wires every node to pull from the local
+# registry (see infra/registry/) at localhost:5001, so images built and
+# pushed locally are usable in-cluster without a real registry.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: orderflow
+networking:
+  disableDefaultCNI: true
+  podSubnet: "192.168.0.0/16"
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+      endpoint = ["http://kind-registry:5000"]
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

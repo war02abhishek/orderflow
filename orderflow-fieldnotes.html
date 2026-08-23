@@ -1,0 +1,744 @@
+<title>OrderFlow Field Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#F4F5F9; --surface:#FFFFFF; --surface-2:#E9EBF3; --line:#D6D9E6;
+    --ink:#1C2033; --ink-muted:#63698A; --ink-faint:#8B90AC;
+    --accent:#3D4EDB; --accent-ink:#2C3AB8; --accent-tint:#E7E9FB;
+    --ok:#1F8A6E; --ok-tint:#E4F4EF; --warn:#B9860F; --warn-tint:#FBF1DC;
+    --crit:#C43B3B; --crit-tint:#FBE9E9; --info:#3E8FA6; --info-tint:#E4F2F5;
+    --diagram-bg:#FCFCFE; --diagram-ink:#1C2033; --diagram-line:#C7CBDD;
+    --code-bg:#161A2C; --code-ink:#DCE0F5; --code-faint:#7D84AC; --code-ok:#5FD9A8; --code-crit:#F08A8D;
+    --font-display:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0F1220; --surface:#171B2E; --surface-2:#1F2440; --line:#2E3457;
+      --ink:#E8E9F5; --ink-muted:#A3A8CC; --ink-faint:#767C9E;
+      --accent:#8590FF; --accent-ink:#AEB6FF; --accent-tint:#242A52;
+      --ok:#42C79B; --ok-tint:#173229; --warn:#E3B33D; --warn-tint:#332C13;
+      --crit:#E3696C; --crit-tint:#3A1E20; --info:#5FB4CB; --info-tint:#152C33;
+      --diagram-bg:#FCFCFE; --diagram-ink:#1C2033; --diagram-line:#C7CBDD;
+      --code-bg:#0B0D18; --code-ink:#DCE0F5; --code-faint:#6B729B; --code-ok:#5FD9A8; --code-crit:#F08A8D;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0F1220; --surface:#171B2E; --surface-2:#1F2440; --line:#2E3457;
+    --ink:#E8E9F5; --ink-muted:#A3A8CC; --ink-faint:#767C9E;
+    --accent:#8590FF; --accent-ink:#AEB6FF; --accent-tint:#242A52;
+    --ok:#42C79B; --ok-tint:#173229; --warn:#E3B33D; --warn-tint:#332C13;
+    --crit:#E3696C; --crit-tint:#3A1E20; --info:#5FB4CB; --info-tint:#152C33;
+    --diagram-bg:#FCFCFE; --diagram-ink:#1C2033; --diagram-line:#C7CBDD;
+    --code-bg:#0B0D18; --code-ink:#DCE0F5; --code-faint:#6B729B; --code-ok:#5FD9A8; --code-crit:#F08A8D;
+  }
+
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+  ::selection{ background:var(--accent-tint); color:var(--ink); }
+  a{ color:var(--accent-ink); }
+  a:focus-visible, summary:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .page{ max-width:900px; margin:0 auto; padding:56px 24px 100px; }
+
+  header.masthead{ display:flex; flex-direction:column; gap:14px; padding-bottom:32px; margin-bottom:16px; border-bottom:1px solid var(--line); }
+  .eyebrow{ font-family:var(--font-mono); font-size:12.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--accent-ink); display:flex; align-items:center; gap:10px; }
+  .eyebrow::before{ content:""; width:7px; height:7px; background:var(--accent); display:inline-block; }
+  h1{ font-family:var(--font-display); font-weight:700; font-size:clamp(2rem, 4vw, 2.6rem); line-height:1.1; letter-spacing:-.01em; margin:0; text-wrap:balance; }
+  .masthead p.dek{ font-size:1.05rem; color:var(--ink-muted); max-width:64ch; margin:0; }
+
+  nav.toc{ background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:18px 22px; margin-bottom:52px; }
+  nav.toc .label{ font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:10px; display:block; }
+  nav.toc ol{ margin:0; padding-left:1.3em; columns:2; column-gap:28px; }
+  nav.toc li{ margin-bottom:6px; font-size:.9rem; break-inside:avoid; }
+
+  section{ margin-bottom:64px; scroll-margin-top:24px; }
+  section > .kicker{ font-family:var(--font-mono); font-size:12px; color:var(--ink-faint); margin-bottom:6px; }
+  section > h2{ font-family:var(--font-display); font-weight:600; font-size:1.55rem; letter-spacing:-.005em; margin:0 0 10px; text-wrap:balance; }
+  section > .section-dek{ color:var(--ink-muted); max-width:68ch; margin:0 0 26px; }
+  h3{ font-family:var(--font-display); font-weight:600; font-size:1.08rem; margin:28px 0 10px; }
+  p{ margin:0 0 14px; max-width:72ch; }
+  ul, ol{ margin:0 0 14px; padding-left:1.3em; }
+  li{ margin-bottom:7px; max-width:66ch; }
+  code{ font-family:var(--font-mono); font-size:.88em; background:var(--surface-2); padding:.12em .4em; border-radius:3px; }
+  strong{ font-weight:600; }
+
+  .callout{ background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:4px; padding:16px 20px; margin:18px 0; }
+  .callout .callout-label{ font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-ink); margin-bottom:6px; display:block; }
+  .callout p:last-child{ margin-bottom:0; }
+
+  .callout.warn{ border-left-color:var(--warn); }
+  .callout.warn .callout-label{ color:var(--warn); }
+
+  .diagram-wrap{ background:var(--diagram-bg); border:1px solid var(--diagram-line); border-radius:8px; padding:20px; overflow-x:auto; margin:18px 0 8px; color:var(--diagram-ink); }
+  .diagram-caption{ font-family:var(--font-mono); font-size:12px; color:var(--ink-faint); margin:0 0 20px; }
+
+  /* Evidence blocks: real captured terminal output, styled distinctly from prose */
+  .evidence{ margin:14px 0 20px; border-radius:8px; overflow:hidden; border:1px solid var(--line); }
+  .evidence .ev-label{ background:var(--surface-2); font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; color:var(--ink-muted); padding:8px 14px; display:flex; align-items:center; gap:8px; }
+  .evidence .ev-label::before{ content:"✓ verified"; color:var(--ok); font-weight:600; }
+  .evidence pre{ margin:0; background:var(--code-bg); color:var(--code-ink); padding:14px 16px; overflow-x:auto; font-family:var(--font-mono); font-size:12.5px; line-height:1.6; }
+  .evidence .ok{ color:var(--code-ok); }
+  .evidence .crit{ color:var(--code-crit); }
+  .evidence .faint{ color:var(--code-faint); }
+
+  /* Why / What breaks pairs */
+  .reason-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:16px 0; }
+  @media (max-width:680px){ .reason-grid{ grid-template-columns:1fr; } }
+  .reason-card{ background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:16px 18px; }
+  .reason-card .rc-label{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:8px; display:block; }
+  .reason-card.why .rc-label{ color:var(--accent-ink); }
+  .reason-card.break .rc-label{ color:var(--crit); }
+  .reason-card p{ margin:0; font-size:.92rem; }
+
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:8px; margin:16px 0; }
+  table{ border-collapse:collapse; width:100%; min-width:640px; background:var(--surface); }
+  thead th{ text-align:left; font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); background:var(--surface-2); padding:10px 14px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  tbody td{ padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; font-size:.9rem; }
+  tbody tr:last-child td{ border-bottom:none; }
+  td.mono{ font-family:var(--font-mono); font-size:.83rem; color:var(--ink-muted); white-space:nowrap; }
+
+  .steps{ counter-reset:step; list-style:none; padding:0; margin:16px 0; }
+  .steps li{ counter-increment:step; position:relative; padding-left:38px; margin-bottom:18px; max-width:68ch; }
+  .steps li::before{ content:counter(step); position:absolute; left:0; top:0; width:26px; height:26px; border-radius:50%; background:var(--accent-tint); color:var(--accent-ink); font-family:var(--font-mono); font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:center; }
+
+  footer{ border-top:1px solid var(--line); padding-top:24px; color:var(--ink-faint); font-size:12.5px; font-family:var(--font-mono); }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Field notes — Phase 0 &amp; Phase 1</div>
+    <h1>OrderFlow Field Notes</h1>
+    <p class="dek">
+      What got built, in what order, and why — with the actual verified
+      output from the running cluster, not hypothetical examples. Written
+      to be read start to finish if you're new to any of this.
+    </p>
+  </header>
+
+  <nav class="toc">
+    <span class="label">Contents</span>
+    <ol>
+      <li><a href="#cluster">What a cluster and a node actually are</a></li>
+      <li><a href="#registry">The image registry</a></li>
+      <li><a href="#namespaces">Namespaces</a></li>
+      <li><a href="#cni">The CNI, NetworkPolicy, and Calico</a></li>
+      <li><a href="#services">orders &amp; inventory: the code decisions</a></li>
+      <li><a href="#service-types">Every K8s Service type, demonstrated</a></li>
+      <li><a href="#loadbalancer">LoadBalancer &amp; MetalLB, in depth</a></li>
+      <li><a href="#flow">The full request, end to end</a></li>
+      <li><a href="#tour">A guided kubectl tour</a></li>
+      <li><a href="#next">What's next</a></li>
+    </ol>
+  </nav>
+
+  <section id="cluster">
+    <div class="kicker">01</div>
+    <h2>What a cluster and a node actually are</h2>
+    <p class="section-dek">
+      Before anything else: Kubernetes doesn't run your code directly. It
+      schedules your code onto <strong>nodes</strong> — machines (real or
+      virtual) that actually have CPU/memory to give — and a
+      <strong>cluster</strong> is just "a control plane plus a set of nodes
+      it's in charge of."
+    </p>
+
+    <p>
+      On a real cloud, a node is a VM. Here, on a laptop, <code>kind</code>
+      ("Kubernetes IN Docker") fakes that by making each node an ordinary
+      Docker container that happens to run a full kubelet + container
+      runtime inside it. So the "cluster" is, physically, four Docker
+      containers talking to each other over a Docker network:
+    </p>
+
+    <div class="evidence">
+      <div class="ev-label">docker ps</div>
+      <pre>orderflow-control-plane   <span class="faint">— runs the API server, scheduler, etcd</span>
+orderflow-worker          <span class="faint">— runs actual application pods</span>
+orderflow-worker2         <span class="faint">— runs actual application pods</span>
+kind-registry              <span class="faint">— the local image registry, not a cluster node</span></pre>
+    </div>
+
+    <p>
+      The <strong>control plane</strong> is the "brain": it stores desired
+      state (etcd), decides which node a pod should land on (scheduler), and
+      exposes the API everything else talks to (<code>kubectl</code>
+      included). It doesn't usually run your application containers itself.
+      <strong>Worker nodes</strong> are where pods actually execute.
+    </p>
+
+    <h3>Why 3 nodes specifically (1 control-plane + 2 workers)</h3>
+    <div class="reason-grid">
+      <div class="reason-card why">
+        <span class="rc-label">Why</span>
+        <p>With only 1 worker, every pod has nowhere else to go — you can't
+        observe "spread across nodes" because there's only one destination.
+        2 workers is the minimum that makes node placement a real decision
+        instead of a foregone conclusion.</p>
+      </div>
+      <div class="reason-card break">
+        <span class="rc-label">What it lets us see</span>
+        <p>3 replicas of <code>inventory</code> across 2 worker nodes landed
+        2-on-one-node, 1-on-the-other — a genuine scheduling decision, not
+        a coincidence, and the exact scenario pod anti-affinity (G9) is
+        about.</p>
+      </div>
+    </div>
+
+    <div class="evidence">
+      <div class="ev-label">kubectl -n inventory get pods -o wide</div>
+      <pre>inventory-8675bffd8-lr5h6   Running   192.168.198.133   <span class="ok">orderflow-worker</span>
+inventory-8675bffd8-pm26w   Running   192.168.47.132    <span class="ok">orderflow-worker2</span>
+inventory-8675bffd8-xcd66   Running   192.168.47.131    <span class="ok">orderflow-worker2</span></pre>
+    </div>
+  </section>
+
+  <section id="registry">
+    <div class="kicker">02</div>
+    <h2>The image registry</h2>
+    <p class="section-dek">
+      Kubernetes never builds code. Every Deployment says "run this exact
+      image" — so the image has to exist <em>somewhere pullable</em> before
+      any pod can start.
+    </p>
+
+    <div class="reason-grid">
+      <div class="reason-card why">
+        <span class="rc-label">Why local, not Docker Hub</span>
+        <p>Pushing every build to a public registry just to test a one-line
+        change is slow and, for private work, wrong. A registry running as
+        a plain container on the same Docker network as the kind nodes lets
+        <code>docker push</code> and a pod's <code>image:</code> field both
+        point at <code>localhost:5001</code> with no cloud account involved.</p>
+      </div>
+      <div class="reason-card break">
+        <span class="rc-label">The one non-obvious wire-up</span>
+        <p>The registry container and the kind nodes have to be on the
+        <em>same</em> Docker network, and containerd on each node needs a
+        mirror rule telling it "when you see <code>localhost:5001</code>,
+        actually go to <code>kind-registry:5000</code>." That's the
+        <code>containerdConfigPatches</code> block in
+        <code>infra/kind-cluster.yaml</code>.</p>
+      </div>
+    </div>
+
+    <div class="evidence">
+      <div class="ev-label">registry reachable from inside a node</div>
+      <pre>$ docker exec orderflow-control-plane curl -s http://kind-registry:5000/v2/_catalog
+{"repositories":[]}   <span class="faint">→ later: ["inventory","orders"]</span></pre>
+    </div>
+  </section>
+
+  <section id="namespaces">
+    <div class="kicker">03</div>
+    <h2>Namespaces</h2>
+    <p class="section-dek">
+      A namespace is <em>not</em> a VM, a network boundary, or a security
+      boundary by itself — it's a naming scope. Two <code>Deployment</code>s
+      called <code>orders</code> can coexist if they're in different
+      namespaces. On its own, that's all a namespace guarantees.
+    </p>
+
+    <p>
+      What makes a namespace <em>also</em> a network boundary is a separate
+      object — <code>NetworkPolicy</code> — attached to it. Namespaces are
+      the unit that policy selects on (<code>namespaceSelector</code>), which
+      is why the two ideas get talked about together even though they're
+      independently optional.
+    </p>
+
+    <p>Four namespaces exist so far, one per concern:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Namespace</th><th>Holds</th><th>Why separated</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">orders</td><td>orders Deployment + Service</td><td>Independent scale/restart lifecycle from inventory</td></tr>
+          <tr><td class="mono">inventory</td><td>inventory Deployment + 5 Service-type demos</td><td>Same — and it's the namespace the Service-type exercises live in</td></tr>
+          <tr><td class="mono">data</td><td>Postgres</td><td>Shared by both app namespaces; kept separate so its own NetworkPolicy is written once</td></tr>
+          <tr><td class="mono">console</td><td>nginx serving the checkout console</td><td>A completely different kind of workload (static assets, not a JVM API)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="cni">
+    <div class="kicker">04</div>
+    <h2>The CNI, NetworkPolicy, and why Calico got swapped in</h2>
+    <p class="section-dek">
+      This is the one genuine surprise of Phase 0 — worth understanding
+      properly rather than skimming past.
+    </p>
+
+    <p>
+      Every Kubernetes cluster needs a <strong>CNI</strong> (Container
+      Network Interface) plugin — the thing that actually gives each pod an
+      IP address and wires up routing between pods. kind ships one by
+      default, called <code>kindnetd</code>. It does the basic job (pods get
+      IPs, pods can reach each other) but it implements <em>none</em> of the
+      <code>NetworkPolicy</code> API — it's not that policies are ignored
+      quietly on purpose, it's that <code>kindnetd</code> never registered
+      itself as something that enforces them at all.
+    </p>
+
+    <div class="callout warn">
+      <span class="callout-label">What this meant in practice</span>
+      <p>
+        The very first version of this cluster had every NetworkPolicy in
+        this repo applied cleanly — <code>kubectl apply</code> succeeded,
+        <code>kubectl get networkpolicy</code> listed them all — and none of
+        it did anything. A pod in <code>console</code> could have reached
+        Postgres directly with zero errors, despite a "default-deny-all"
+        policy sitting right there in the <code>data</code> namespace.
+      </p>
+    </div>
+
+    <p>
+      The fix: recreate the cluster with <code>disableDefaultCNI: true</code>,
+      then install <a href="https://www.tigera.io/project-calico/">Calico</a>
+      — an open-source CNI that <em>does</em> implement <code>NetworkPolicy</code>
+      (via Linux iptables rules it programs on every node, keyed to each
+      pod's IP). This is why <code>infra/kind-cluster.yaml</code> sets
+      <code>podSubnet: 192.168.0.0/16</code> — that's Calico's own default
+      pod IP range, matched so no extra config is needed on Calico's side.
+    </p>
+
+    <h3>The default-deny + explicit-allow shape</h3>
+    <p>
+      Every namespace gets a <code>default-deny-all</code> policy first
+      (<code>policyTypes: [Ingress, Egress]</code>, empty selector = applies
+      to every pod, no rules = nothing is allowed). Then narrow policies add
+      back exactly the traffic that's supposed to exist. This is
+      deliberately the opposite of "allow everything, block the bad stuff" —
+      with default-deny, a namespace you forget to write a rule for is
+      <em>safe by default</em>, not open by accident.
+    </p>
+
+    <div class="diagram-wrap">
+<pre class="mermaid">
+flowchart LR
+  subgraph consolens["console"]
+    console["checkout-console"]
+  end
+  subgraph ordersns["orders"]
+    orders["orders"]
+  end
+  subgraph invns["inventory"]
+    inventory["inventory"]
+  end
+  subgraph datans["data"]
+    postgres[("postgres")]
+  end
+
+  console -- "8080\n(proxy /checkout, /orders/)" --> orders
+  orders -- "8080" --> inventory
+  orders -- "5432" --> postgres
+  inventory -- "5432" --> postgres
+
+  classDef blocked stroke-dasharray: 4 3,stroke:#c43b3b,color:#c43b3b;
+  console -.- inventory
+  console -.- postgres
+  class console blocked
+</pre>
+    </div>
+    <p class="diagram-caption">Solid = allowed by an explicit NetworkPolicy rule. Everything not drawn is denied by default-deny — including console→inventory and console→postgres directly, even though nothing stops console's nginx from <em>trying</em>.</p>
+
+    <div class="evidence">
+      <div class="ev-label">proof the default-deny is real, not decorative</div>
+      <pre><span class="faint">A pod in orders trying to reach an arbitrary external address</span>
+      <span class="faint">(not inventory, not postgres, not DNS) on port 30080:</span>
+$ kubectl -n orders exec orders-xxx -- curl -m5 http://172.20.0.3:30080/checkout
+<span class="crit">command terminated with exit code 28</span>   <span class="faint">← timeout, exactly what default-deny egress does</span>
+
+$ docker exec orderflow-control-plane curl -m5 http://localhost:30080/checkout
+<span class="ok">{"id":"a455...","status":"RESERVED", ...}</span>   <span class="faint">← same port, from the node's own network (not a pod, not policed)</span></pre>
+    </div>
+    <p>
+      That pair is worth sitting with: identical destination, identical
+      port. One request comes from inside a pod (subject to Calico's
+      enforcement) and times out. The other comes from the node's own host
+      network namespace (not a pod, so no NetworkPolicy applies to it at
+      all) and succeeds instantly. Same cluster, same second — the only
+      variable is which network namespace the request originates from.
+    </p>
+  </section>
+
+  <section id="services">
+    <div class="kicker">05</div>
+    <h2>orders &amp; inventory: the code-level decisions</h2>
+    <p class="section-dek">
+      Each of these exists because of a specific way the "obvious" version
+      breaks. Concrete before/after, not abstract principle.
+    </p>
+
+    <h3>G1 — atomic stock reservation (no overselling)</h3>
+    <div class="reason-grid">
+      <div class="reason-card break">
+        <span class="rc-label">The naive version</span>
+        <p><code>read stock → check enough? → write stock-qty</code>. Two
+        requests can both read "25 available" before either writes — both
+        pass the check, both decrement, stock goes negative.</p>
+      </div>
+      <div class="reason-card why">
+        <span class="rc-label">What's actually deployed</span>
+        <p>One SQL statement:
+        <code>UPDATE stock SET qty = qty - :n WHERE qty >= :n</code>.
+        The check and the write happen atomically inside Postgres — there's
+        no gap between them for a second request to land in.</p>
+      </div>
+    </div>
+    <div class="evidence">
+      <div class="ev-label">15 concurrent requests against a 25-unit SKU</div>
+      <pre>8x  <span class="ok">success</span> (25 → 22 → 19 → ... → 1)
+7x  <span class="crit">INSUFFICIENT_STOCK</span> at remaining=1, every time
+final stock: <span class="ok">1</span>   <span class="faint">— never negative, across real concurrency, not a single-threaded test</span></pre>
+    </div>
+
+    <h3>G2 — idempotent reserve/release</h3>
+    <div class="reason-grid">
+      <div class="reason-card break">
+        <span class="rc-label">The scenario</span>
+        <p><code>orders</code> calls <code>inventory</code>. The response
+        gets lost on the way back (network blip, or — starting Phase 4 —
+        Istio's own retry policy). <code>orders</code> retries. Without
+        protection, that's two decrements for one logical reservation.</p>
+      </div>
+      <div class="reason-card why">
+        <span class="rc-label">What's actually deployed</span>
+        <p>Every reserve/release call carries an <code>Idempotency-Key</code>
+        header. <code>inventory</code> checks a table keyed on that value
+        <em>before</em> touching stock — a key it's seen before returns the
+        stored result instead of mutating anything again.</p>
+      </div>
+    </div>
+    <div class="evidence">
+      <div class="ev-label">same Idempotency-Key, sent twice</div>
+      <pre>{"remaining":993,"success":true, ...}
+{"remaining":993,"success":true, ...}   <span class="faint">← identical, not 988 — no second decrement happened</span></pre>
+    </div>
+
+    <h3>The rest, briefly</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Gap</th><th>What breaks without it</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">G8 — probes</td><td>Kubernetes can't tell a hung pod from a healthy one, and sends traffic to a pod that isn't ready yet during startup</td></tr>
+          <tr><td class="mono">G9 — anti-affinity</td><td>Nothing stops 3 replicas landing on the same node — one node failure would then take out every replica at once</td></tr>
+          <tr><td class="mono">G10 — resource limits</td><td>Without a declared CPU request, Phase 6's HPA has no baseline to compute "% of requested CPU" against — autoscaling silently can't work</td></tr>
+          <tr><td class="mono">G12 — graceful shutdown</td><td>A pod killed mid-request drops that request instead of finishing it; the <code>preStop</code> sleep gives the Service time to stop routing to a pod that's already leaving</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="service-types">
+    <div class="kicker">06</div>
+    <h2>Every K8s Service type, demonstrated</h2>
+    <p class="section-dek">
+      A <code>Service</code> is a stable name + routing rule in front of a
+      set of pods (pods themselves get new IPs every time they restart). The
+      <code>type</code> field is <em>what kind of stable thing</em> gets
+      created. All five exist right now, attached to <code>inventory</code>.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>What it actually is</th><th>Verified result</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">ClusterIP</td><td>One virtual IP, internal to the cluster only. The default.</td><td class="mono">10.96.142.124 — one IP for all 3 pods, this is what orders actually calls</td></tr>
+          <tr><td class="mono">NodePort</td><td>Same as ClusterIP, plus every node opens the same fixed port and forwards it in</td><td class="mono">curl to any node's own IP:30080 reaches orders</td></tr>
+          <tr><td class="mono">Headless</td><td><code>clusterIP: None</code> — DNS returns the pods' real IPs directly, no virtual IP at all</td><td class="mono">3 A records, one per pod IP, not one shared address</td></tr>
+          <tr><td class="mono">LoadBalancer</td><td>Asks an external controller for a real, routable IP</td><td class="mono">172.20.255.200 assigned by MetalLB (see next section)</td></tr>
+          <tr><td class="mono">ExternalName</td><td>Pure DNS alias — no pods, no IP of its own, just a CNAME</td><td class="mono">resolves straight through to example.com's real IPs</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="evidence">
+      <div class="ev-label">headless vs. clusterIP, same 3 pods, different DNS answer</div>
+      <pre>$ getent hosts inventory-headless.inventory.svc.cluster.local
+192.168.198.133 inventory-headless...
+192.168.47.132  inventory-headless...
+192.168.47.131  inventory-headless...
+
+$ getent hosts inventory.inventory.svc.cluster.local
+10.96.142.124   inventory...          <span class="faint">← one address, kube-proxy load-balances behind it</span></pre>
+    </div>
+  </section>
+
+  <section id="loadbalancer">
+    <div class="kicker">07</div>
+    <h2>LoadBalancer &amp; MetalLB, in depth</h2>
+    <p class="section-dek">
+      This is the one exercise with a real, worth-understanding limitation —
+      not a mistake, a property of running kind on Docker Desktop for Mac.
+    </p>
+
+    <p>
+      On a real cloud, setting <code>type: LoadBalancer</code> makes
+      Kubernetes call out to the cloud provider's API ("give me a real
+      external IP and route it to these pods"). kind has no cloud provider
+      to call — which is why, out of the box, a LoadBalancer Service on kind
+      just sits at <code>&lt;pending&gt;</code> forever.
+    </p>
+
+    <p>
+      <a href="https://metallb.universe.tf/">MetalLB</a> is an open-source
+      project that plays the role of "the cloud provider" for bare-metal or
+      local clusters. It watches for LoadBalancer Services and, in the
+      simplest mode (<strong>Layer 2</strong>), picks an IP from a
+      configured pool and has one node announce "that IP is mine" over ARP
+      — the same mechanism a machine on any Ethernet network uses to say
+      "traffic for this IP should come to me."
+    </p>
+
+    <div class="steps">
+      <li>Installed MetalLB (controller + a <code>speaker</code> DaemonSet, one per node).</li>
+      <li>Gave it a pool: <code>172.20.255.200-250</code> — a slice of the kind Docker network's own subnet that Docker's own IP allocator doesn't hand out to containers.</li>
+      <li>Created <code>inventory-lb</code> with <code>type: LoadBalancer</code>.</li>
+    </div>
+
+    <div class="evidence">
+      <div class="ev-label">the IP assignment itself — this part worked exactly as intended</div>
+      <pre>NAME           TYPE           CLUSTER-IP    EXTERNAL-IP        PORT(S)
+inventory-lb   LoadBalancer   10.96.32.44   <span class="ok">172.20.255.200</span>     8080:31200/TCP
+
+speaker log: "service has IP, announcing" pool=kind-pool protocol=layer2</pre>
+    </div>
+
+    <p>
+      That's the real Kubernetes-level lesson: a controller watching Service
+      objects and assigning real IPs from a pool is exactly what happens on
+      AWS/GCP too, just with a different controller underneath. But the
+      actual packets never arrived:
+    </p>
+
+    <div class="evidence">
+      <div class="ev-label">ARP table on the node that announced the IP</div>
+      <pre>$ ip neigh show | grep 172.20.255.200
+<span class="faint">(nothing — no entry, ever)</span>
+
+$ curl -m5 http://172.20.255.200:8080/...
+<span class="crit">curl: (28) Operation timed out</span></pre>
+    </div>
+
+    <div class="callout">
+      <span class="callout-label">Why, specifically</span>
+      <p>
+        Docker Desktop for Mac runs every container inside one Linux VM and
+        emulates the "bridge network" containers sit on. Gratuitous ARP
+        announcements — the mechanism MetalLB's Layer 2 mode depends on —
+        don't reliably propagate across that emulated bridge the way they do
+        on a real Linux host's bridge. The control-plane side (MetalLB
+        deciding and announcing an IP) is 100% real Kubernetes behavior; the
+        data-plane side (that IP actually being reachable) is where this
+        specific laptop's virtualization falls short. On a native Linux
+        Docker host, or a real cloud LoadBalancer, both sides work.
+      </p>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="kicker">08</div>
+    <h2>The full request, end to end</h2>
+    <p class="section-dek">
+      Everything above, as one request: opening the checkout console and
+      clicking "Place order."
+    </p>
+
+    <div class="diagram-wrap">
+<pre class="mermaid">
+sequenceDiagram
+  participant Browser
+  participant Console as console nginx<br/>(ns: console)
+  participant Orders as orders pod<br/>(ns: orders)
+  participant Inventory as inventory pod<br/>(ns: inventory)
+  participant PG as postgres<br/>(ns: data)
+
+  Browser->>Console: GET /  (port-forward :18090)
+  Console-->>Browser: index.html + JS
+
+  Browser->>Console: POST /checkout {sku, quantity}
+  Console->>Orders: proxy_pass :8080/checkout
+  Note over Console,Orders: allowed by allow-console-egress-to-orders
+
+  Orders->>Inventory: POST /stock/{sku}/reserve<br/>Idempotency-Key: <uuid>
+  Note over Orders,Inventory: allowed by allow-orders-egress-to-inventory
+  Inventory->>PG: UPDATE stock SET qty=qty-:n WHERE qty>=:n
+  Note over Inventory,PG: allowed by allow-inventory-egress-to-postgres
+  PG-->>Inventory: 1 row updated (or 0 = insufficient)
+  Inventory-->>Orders: 200 {success, remaining, handledByPod}
+
+  Orders->>PG: INSERT order (status=RESERVED/REJECTED)
+  Note over Orders,PG: allowed by allow-orders-egress-to-postgres
+  Orders-->>Console: 201 {id, status, handledByPod}
+  Console-->>Browser: same JSON, browser renders it
+
+  loop every 2s, 5x
+    Browser->>Console: GET /orders/{id}
+    Console->>Orders: proxy_pass
+    Orders->>PG: SELECT order
+    Orders-->>Console: current status
+    Console-->>Browser: handledByPod may differ each time
+  end
+</pre>
+    </div>
+    <p class="diagram-caption">Every hop labeled with the specific NetworkPolicy that permits it — delete any one of those policies and that exact hop starts timing out, nothing else.</p>
+
+    <p>
+      The polling loop at the bottom is deliberate: each poll can land on a
+      <em>different</em> <code>orders</code> pod (3 replicas, load-balanced
+      by the ClusterIP Service), so <code>handledByPod</code> changing
+      between polls on screen is the load-balancing behavior from section 1,
+      now visible in a browser instead of a terminal.
+    </p>
+  </section>
+
+  <section id="tour">
+    <div class="kicker">09</div>
+    <h2>A guided kubectl tour</h2>
+    <p class="section-dek">
+      The actual commands run against this cluster, in order, with what
+      each one is showing. A one-time setup note first: <code>kubectl</code>,
+      <code>kind</code>, <code>helm</code>, and <code>k9s</code> were
+      installed into <code>~/homebrew</code> this session — a brand new
+      terminal window picks that up automatically, an already-open one needs
+      <code>source ~/.zshrc</code> first.
+    </p>
+
+    <h3>Where is everything?</h3>
+    <div class="evidence">
+      <div class="ev-label">kubectl cluster-info</div>
+      <pre>Kubernetes control plane is running at <span class="ok">https://127.0.0.1:50685</span>
+CoreDNS is running at https://127.0.0.1:50685/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy</pre>
+    </div>
+    <p>That address is a port kind forwarded from the <code>orderflow-control-plane</code> container to the Mac's own localhost — every <code>kubectl</code> command is really an HTTPS call to that address.</p>
+
+    <div class="evidence">
+      <div class="ev-label">kubectl get nodes -o wide</div>
+      <pre>orderflow-control-plane   Ready    control-plane   172.20.0.3
+orderflow-worker          Ready    &lt;none&gt;          172.20.0.4
+orderflow-worker2         Ready    &lt;none&gt;          172.20.0.2</pre>
+    </div>
+
+    <div class="evidence">
+      <div class="ev-label">kubectl get pods -A -o wide (trimmed to what matters)</div>
+      <pre>NAMESPACE    NAME                                 NODE
+console      checkout-console-755c5d4f46-rcl9k   orderflow-worker
+data         postgres-f8ffb474d-98g9d             orderflow-worker2
+inventory    inventory-...-lr5h6                  orderflow-worker
+inventory    inventory-...-pm26w                  orderflow-worker2
+inventory    inventory-...-xcd66                  orderflow-worker2
+orders       orders-...-2jb2x                     orderflow-worker2
+orders       orders-...-4xjcm                     orderflow-worker
+orders       orders-...-wmpqg                     orderflow-worker2
+kube-system  calico-node-*  (one per node)         <span class="faint">DaemonSet — every node needs its own copy</span>
+kube-system  kube-proxy-*   (one per node)         <span class="faint">DaemonSet — same reason</span>
+kube-system  etcd, kube-apiserver, kube-scheduler,
+             kube-controller-manager               <span class="faint">all pinned to the control-plane node only</span></pre>
+    </div>
+    <p>
+      The system pods split into two patterns worth recognizing:
+      control-plane pieces (<code>etcd</code>, <code>kube-apiserver</code>,
+      <code>kube-scheduler</code>, <code>kube-controller-manager</code>) run
+      <em>only</em> on <code>orderflow-control-plane</code> — that's the
+      "brain," it doesn't run application workloads. <code>calico-node</code>,
+      <code>kube-proxy</code>, and MetalLB's <code>speaker</code> run as
+      <strong>DaemonSets</strong> — exactly one copy per node, because every
+      node independently needs its own networking agent.
+    </p>
+
+    <h3>Looking inside one pod</h3>
+    <div class="evidence">
+      <div class="ev-label">kubectl describe pod inventory-...-lr5h6 -n inventory (excerpt)</div>
+      <pre>Node:      orderflow-worker/172.20.0.4
+IP:        192.168.198.133
+Image:     localhost:5001/inventory:dev
+Limits:    cpu: 500m,  memory: 512Mi
+Requests:  cpu: 150m,  memory: 384Mi
+Liveness:  http-get http://:8080/actuator/health/liveness   delay=30s period=10s
+Readiness: http-get http://:8080/actuator/health/readiness  delay=15s period=5s
+Environment:
+  DB_USER:      &lt;set to the key 'DB_USER' in secret 'db-credentials'&gt;
+  DB_PASSWORD:  &lt;set to the key 'DB_PASSWORD' in secret 'db-credentials'&gt;</pre>
+    </div>
+    <p>One command, and G8 (probes), G10 (resource limits), and "credentials come from a Secret, not a hardcoded value" are all directly visible.</p>
+
+    <div class="evidence">
+      <div class="ev-label">kubectl logs inventory-...-lr5h6 -n inventory --tail=25 (excerpt)</div>
+      <pre>HikariPool-1 - Starting...
+HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@7bfcc108
+Database JDBC URL [jdbc:postgresql://postgres.data.svc.cluster.local:5432/inventory]
+Tomcat started on port 8080 (http) with context path '/'
+Started InventoryApplication in 17.995 seconds</pre>
+    </div>
+
+    <div class="evidence">
+      <div class="ev-label">kubectl exec -it inventory-...-lr5h6 -n inventory -- sh -c "hostname; id"</div>
+      <pre>inventory-8675bffd8-lr5h6
+uid=10001(appuser) gid=10001(appuser) groups=10001(appuser)</pre>
+    </div>
+    <p>
+      Two things confirmed from inside the container itself: the hostname is
+      exactly what shows up as <code>handledByPod</code> in every API
+      response (that's literally the <code>HOSTNAME</code> env var
+      Kubernetes sets), and it's running as <code>uid 10001</code>, not
+      root — the non-root Dockerfile setup from Phase 1, verified rather
+      than just declared.
+    </p>
+
+    <h3>Object hierarchy</h3>
+    <div class="evidence">
+      <div class="ev-label">kubectl get all -n orders</div>
+      <pre>pod/orders-84d8d974d7-2jb2x        Running
+pod/orders-84d8d974d7-4xjcm        Running
+pod/orders-84d8d974d7-wmpqg        Running
+
+service/orders            ClusterIP   10.96.194.114   8080/TCP
+service/orders-nodeport   NodePort    10.96.47.101    8080:30080/TCP
+
+deployment.apps/orders             3/3   3   3
+replicaset.apps/orders-84d8d974d7  3     3   3</pre>
+    </div>
+    <p>
+      A <code>Deployment</code> doesn't manage pods directly — it manages a
+      <code>ReplicaSet</code>, which is the thing actually watching and
+      maintaining the replica count. Applying a change to a Deployment
+      creates a <em>new</em> ReplicaSet and scales the old one to zero; that
+      hand-off is how rolling updates work.
+    </p>
+
+    <h3>The fast way to browse all of this: k9s</h3>
+    <p>
+      Typing <code>kubectl get pods -n X</code> repeatedly gets old.
+      <code>k9s</code> is a full-screen terminal UI over the same API:
+      <code>:pods</code> jumps to the pod list, arrow keys navigate,
+      <code>l</code> tails logs on the selected pod, <code>d</code>
+      describes it, <code>s</code> shells into it, <code>:ns</code> switches
+      namespace.
+    </p>
+  </section>
+
+  <section id="next">
+    <div class="kicker">10</div>
+    <h2>What's next</h2>
+    <p>
+      Phase 2 adds Kafka (3 brokers, via Strimzi), the <code>payment</code>
+      service, and the actual saga: <code>orders</code> becomes an
+      orchestrator that reacts to payment success/failure, with a
+      compensating <code>inventory</code> release on failure and the Outbox
+      pattern making sure none of those Kafka events can be lost or
+      duplicated relative to the database state. Full detail in
+      <code>README.md</code>.
+    </p>
+  </section>
+
+  <footer>
+    system_scale / OrderFlow — companion to README.md and orderflow-blueprint.html
+  </footer>
+
+</div>

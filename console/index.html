@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OrderFlow Checkout Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f9; --surface: #fff; --line: #d6d9e6; --ink: #1c2033;
+    --ink-muted: #63698a; --accent: #3d4edb; --ok: #1f8a6e; --crit: #c43b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1220; --surface:#171b2e; --line:#2e3457; --ink:#e8e9f5; --ink-muted:#a3a8cc; --accent:#8590ff; --ok:#42c79b; --crit:#e3696c; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    padding: 32px 20px; max-width: 640px; margin-inline: auto;
+  }
+  h1 { font-size: 1.1rem; margin: 0 0 4px; }
+  p.sub { color: var(--ink-muted); margin: 0 0 24px; font-size: .85rem; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: .8rem; color: var(--ink-muted); margin-bottom: 4px; }
+  input { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); font-family: inherit; }
+  button { background: var(--accent); color: #fff; border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: .85rem; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
+  .row:last-child { border-bottom: none; }
+  .row span:first-child { color: var(--ink-muted); }
+  .status-RESERVED { color: var(--ok); }
+  .status-CONFIRMED { color: var(--ok); }
+  .status-REJECTED, .status-CANCELLED { color: var(--crit); }
+  #log { font-size: .75rem; color: var(--ink-muted); white-space: pre-wrap; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>OrderFlow &mdash; checkout console</h1>
+  <p class="sub">Calls POST /checkout, then polls GET /orders/{id}. Watch <b>handledByPod</b> change across requests &mdash; that's load balancing across replicas, live.</p>
+
+  <div class="card">
+    <label for="sku">SKU</label>
+    <input id="sku" value="SKU-STANDARD-1">
+    <label for="qty">Quantity</label>
+    <input id="qty" type="number" value="1" min="1">
+    <button id="checkoutBtn">Place order</button>
+  </div>
+
+  <div class="card" id="result" style="display:none">
+    <div class="row"><span>Order ID</span><span id="f-id"></span></div>
+    <div class="row"><span>Status</span><span id="f-status"></span></div>
+    <div class="row"><span>SKU / Qty</span><span id="f-sku"></span></div>
+    <div class="row"><span>Handled by pod</span><span id="f-pod"></span></div>
+    <div class="row"><span>Last polled</span><span id="f-time"></span></div>
+  </div>
+
+  <div id="log"></div>
+
+<script>
+  // Same-origin by default. Override with ?api=http://host:port if the
+  // console is served from somewhere other than where `orders` is exposed.
+  const API_BASE = new URLSearchParams(location.search).get('api') || '';
+  const log = (msg) => {
+    const el = document.getElementById('log');
+    el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
+  };
+
+  function render(order) {
+    document.getElementById('result').style.display = 'block';
+    document.getElementById('f-id').textContent = order.id;
+    const statusEl = document.getElementById('f-status');
+    statusEl.textContent = order.status + (order.version ? ` (${order.version})` : '');
+    statusEl.className = 'status-' + order.status;
+    document.getElementById('f-sku').textContent = `${order.sku} x${order.quantity}`;
+    document.getElementById('f-pod').textContent = order.handledByPod;
+    document.getElementById('f-time').textContent = new Date().toLocaleTimeString();
+  }
+
+  let pollTimer = null;
+
+  async function poll(id) {
+    try {
+      const res = await fetch(`${API_BASE}/orders/${id}`);
+      const order = await res.json();
+      render(order);
+      log(`GET /orders/${id} -> ${order.status} (pod ${order.handledByPod})`);
+    } catch (e) {
+      log(`poll failed: ${e}`);
+    }
+  }
+
+  document.getElementById('checkoutBtn').addEventListener('click', async () => {
+    const sku = document.getElementById('sku').value.trim();
+    const quantity = parseInt(document.getElementById('qty').value, 10);
+    const btn = document.getElementById('checkoutBtn');
+    btn.disabled = true;
+    if (pollTimer) clearInterval(pollTimer);
+
+    try {
+      const res = await fetch(`${API_BASE}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku, quantity }),
+      });
+      const order = await res.json();
+      render(order);
+      log(`POST /checkout -> ${order.status} (pod ${order.handledByPod}), order ${order.id}`);
+      // Phase 1: status is terminal immediately (no saga yet), but poll a
+      // few times anyway so refreshing after a redeploy/canary shift
+      // (Phase 5) shows the same order answered by a different pod/version.
+      let ticks = 0;
+      pollTimer = setInterval(() => {
+        poll(order.id);
+        if (++ticks >= 5) clearInterval(pollTimer);
+      }, 2000);
+    } catch (e) {
+      log(`checkout failed: ${e}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

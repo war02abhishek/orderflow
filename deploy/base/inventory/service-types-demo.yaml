@@ -1,0 +1,49 @@
+# Pedagogical Service-type exercises on top of inventory's real ClusterIP
+# Service (in deployment.yaml). None of these carry real traffic -- they
+# exist to show what each Service type actually does to DNS/routing.
+---
+# Headless: no cluster IP at all. DNS for this name returns the pods' own
+# IPs directly (one A record per Ready pod) instead of one virtual IP -- the
+# same mechanism Kafka's StatefulSet leans on in Phase 2, previewed here
+# against a plain Deployment.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-headless
+  namespace: inventory
+spec:
+  clusterIP: None
+  selector:
+    app: inventory
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# LoadBalancer: on most local setups this stays Pending forever -- MetalLB
+# (installed alongside this) gives kind a real controller to assign an
+# actual IP from, so this behaves like it would on a cloud cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-lb
+  namespace: inventory
+spec:
+  type: LoadBalancer
+  selector:
+    app: inventory
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# ExternalName: pure DNS indirection, no selector, no endpoints of its own --
+# resolving this name returns a CNAME to an external host instead of any
+# pod IP. Points at a harmless, always-up host just to demonstrate the
+# mechanism (`kubectl exec ... -- nslookup external-example.inventory`).
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-example
+  namespace: inventory
+spec:
+  type: ExternalName
+  externalName: example.com

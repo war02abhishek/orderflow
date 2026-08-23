@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+  namespace: inventory
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: inventory
+  template:
+    metadata:
+      labels:
+        app: inventory
+    spec:
+      # G9: soft anti-affinity -- with 3 replicas and 2 worker nodes, a hard
+      # requirement would leave one pod permanently Pending, so this is a
+      # preference, not a guarantee. It's still what keeps the scheduler
+      # from stacking all 3 replicas on the same node by default.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: inventory
+                topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: inventory
+          image: localhost:5001/inventory:dev
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_HOST
+              value: postgres.data.svc.cluster.local
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: inventory
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASSWORD
+          lifecycle:
+            preStop:
+              exec:
+                # Gives the Service/Endpoint controller time to remove this
+                # pod from rotation before Spring's own graceful shutdown
+                # starts refusing new connections (G12).
+                command: ["sh", "-c", "sleep 5"]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 150m
+              memory: 384Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory
+  namespace: inventory
+spec:
+  selector:
+    app: inventory
+  ports:
+    - port: 8080
+      targetPort: 8080
