@@ -17,3 +17,21 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: console
+---
+# kafka namespace is created by infra/strimzi/install.sh (the operator
+# needs to exist before the Kafka cluster CR can be applied into it), so
+# it's not listed here even though it's part of the same set conceptually.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payment
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: notifications
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cache

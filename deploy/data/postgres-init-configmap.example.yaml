@@ -19,3 +19,9 @@ data:
 
     CREATE USER inventory WITH PASSWORD '<same-password-as-secret>';
     CREATE DATABASE inventory OWNER inventory;
+
+    CREATE USER payment WITH PASSWORD '<same-password-as-secret>';
+    CREATE DATABASE payment OWNER payment;
+
+    CREATE USER notifications WITH PASSWORD '<same-password-as-secret>';
+    CREATE DATABASE notifications OWNER notifications;

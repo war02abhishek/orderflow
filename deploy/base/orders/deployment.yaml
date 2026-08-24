@@ -26,6 +26,7 @@ spec:
       containers:
         - name: orders
           image: localhost:5001/orders:dev
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
@@ -47,6 +48,8 @@ spec:
                   key: DB_PASSWORD
             - name: INVENTORY_BASE_URL
               value: http://inventory.inventory.svc.cluster.local:8080
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: orderflow-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
           lifecycle:
             preStop:
               exec:

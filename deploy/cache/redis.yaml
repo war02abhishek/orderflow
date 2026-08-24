@@ -1,0 +1,53 @@
+# Narrow use, on purpose: idempotency fast-path for payment/notifications'
+# Kafka consumers (G17) and inventory's reserve/release (G2). Not a general
+# cache -- see the "Where Redis fits" analysis in orderflow-blueprint.html
+# for why it's deliberately not in front of the stock-reservation read path.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: [redis-cli, ping]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [redis-cli, ping]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: cache
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

@@ -1,0 +1,134 @@
+# 3 partitions per topic (G4): payment and notifications can run multiple
+# consumer replicas in the same group instead of being capped at one,
+# exercised for real in Phase 6. Each saga topic gets a matching .dlq
+# topic (G5) so a malformed/poison message can't wedge a partition.
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-requested
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-requested.dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-completed
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-completed.dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-failed
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-failed.dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: order-placed
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: order-placed.dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: order-cancelled
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: order-cancelled.dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: orderflow-kafka
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2

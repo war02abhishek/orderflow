@@ -11,6 +11,8 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:inventory}
     username: ${DB_USER:inventory}
     password: ${DB_PASSWORD:inventory}
+    hikari:
+      maximum-pool-size: 5
   jpa:
     hibernate:
       ddl-auto: update

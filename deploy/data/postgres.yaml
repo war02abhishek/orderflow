@@ -29,6 +29,11 @@ spec:
       containers:
         - name: postgres
           image: postgres:16
+          # Headroom for Phase 6's HPA adding more `orders` replicas later --
+          # the default of 100 was already tight with 4 services' worth of
+          # HikariCP pools (see G6: this single shared instance is a named,
+          # documented SPOF and connection-count bottleneck, not a hidden one).
+          args: ["-c", "max_connections=300"]
           ports:
             - containerPort: 5432
           env:

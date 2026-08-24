@@ -30,6 +30,7 @@ spec:
       containers:
         - name: inventory
           image: localhost:5001/inventory:dev
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:

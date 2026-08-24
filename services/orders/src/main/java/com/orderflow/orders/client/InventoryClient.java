@@ -36,4 +36,22 @@ public class InventoryClient {
 
         return new ReserveResult(response.success(), response.remaining(), response.errorCode());
     }
+
+    /**
+     * The compensating action: called only from the saga's failure path
+     * (SagaResultListener, via OrdersService.cancel) to give back stock a
+     * reservation already took. Same idempotency-key-per-call shape as
+     * reserve() -- safe against Istio retrying this exact request too.
+     */
+    public void release(String sku, int qty) {
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        inventoryRestClient.post()
+                .uri("/stock/{sku}/release", sku)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new QuantityRequest(qty))
+                .retrieve()
+                .toBodilessEntity();
+    }
 }
