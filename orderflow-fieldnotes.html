@@ -124,6 +124,7 @@
   <nav class="toc">
     <span class="label">Contents</span>
     <ol>
+      <li><a href="#services-reference">Reference: what each service does</a></li>
       <li><a href="#cluster">What a cluster and a node actually are</a></li>
       <li><a href="#registry">The image registry</a></li>
       <li><a href="#namespaces">Namespaces</a></li>
@@ -139,6 +140,179 @@
       <li><a href="#next">What's next</a></li>
     </ol>
   </nav>
+
+  <section id="services-reference">
+    <div class="kicker">reference</div>
+    <h2>What each service actually does</h2>
+    <p class="section-dek">
+      A lookup, not a story — come back here any time "wait, which service
+      handles that?" comes up while reading the rest of this. Four services,
+      one Postgres instance (four separate databases inside it), one Kafka
+      cluster, one Redis. Confirmed straight from the code, not summarized
+      from memory.
+    </p>
+
+    <div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TB
+  Browser(["Browser"])
+
+  subgraph consolens["ns: console"]
+    Console["checkout-console"]
+  end
+  subgraph ordersns["ns: orders"]
+    Orders["orders"]
+  end
+  subgraph invns["ns: inventory"]
+    Inventory["inventory"]
+  end
+  subgraph paymentns["ns: payment"]
+    Payment["payment"]
+  end
+  subgraph notifns["ns: notifications"]
+    Notifications["notifications"]
+  end
+  subgraph kafkans["ns: kafka"]
+    K[("Kafka")]
+  end
+  subgraph datans["ns: data"]
+    PG[("Postgres")]
+  end
+  subgraph cachens["ns: cache"]
+    Redis[("Redis")]
+  end
+
+  Browser -- "GET /" --> Console
+  Console -- "REST: /checkout, /orders/*" --> Orders
+  Orders -- "REST: /stock/*/reserve, /release" --> Inventory
+  Orders -- "produces payment-requested\nconsumes payment-completed / -failed" --> K
+  K -- "consumes payment-requested\nproduces payment-completed / -failed" --> Payment
+  K -- "consumes order-placed / -cancelled" --> Notifications
+  Orders --- PG
+  Inventory --- PG
+  Payment --- PG
+  Notifications --- PG
+  Payment -.-> Redis
+  Notifications -.-> Redis
+</pre>
+    </div>
+    <p class="diagram-caption">Solid = request path (REST or Kafka, labeled). Dashed = the narrow, deliberate Redis usage — nothing else touches it. Each service's box sits in its own namespace and only has Postgres credentials for its own database.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Service</th><th>Kind</th><th>REST endpoints</th><th>Kafka consumes</th><th>Kafka produces</th><th>Owns (DB)</th><th>Idempotency</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">orders</td>
+            <td>API + saga orchestrator + outbox relay</td>
+            <td class="mono">POST /checkout<br>GET /orders/{id}</td>
+            <td class="mono">payment-completed<br>payment-failed</td>
+            <td class="mono">payment-requested<br>order-placed<br>order-cancelled</td>
+            <td class="mono">orders, outbox_event</td>
+            <td>status-guard (only act if still <code>AWAITING_PAYMENT</code>)</td>
+          </tr>
+          <tr>
+            <td class="mono">inventory</td>
+            <td>API only, no Kafka at all</td>
+            <td class="mono">GET /stock/{sku}<br>POST /stock/{sku}/reserve<br>POST /stock/{sku}/release</td>
+            <td class="mono">—</td>
+            <td class="mono">—</td>
+            <td class="mono">stock, idempotency_record</td>
+            <td><code>Idempotency-Key</code> header + Postgres (G2)</td>
+          </tr>
+          <tr>
+            <td class="mono">payment</td>
+            <td>Kafka consumer + producer, no business API</td>
+            <td class="mono">—</td>
+            <td class="mono">payment-requested</td>
+            <td class="mono">payment-completed<br>payment-failed</td>
+            <td class="mono">processed_event</td>
+            <td>Redis fast-path + Postgres backstop (G17)</td>
+          </tr>
+          <tr>
+            <td class="mono">notifications</td>
+            <td>Kafka consumer only, no business API</td>
+            <td class="mono">—</td>
+            <td class="mono">order-placed<br>order-cancelled</td>
+            <td class="mono">—</td>
+            <td class="mono">processed_event</td>
+            <td>Redis fast-path + Postgres backstop (G17)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>orders</h3>
+    <p>
+      The only service with two jobs at once: it's a normal REST API
+      (<code>POST /checkout</code>, <code>GET /orders/{id}</code>) <em>and</em>
+      the saga's orchestrator. <code>checkout</code> calls <code>inventory</code>
+      synchronously — that part is a plain precondition, not a saga step.
+      Past that, <code>orders</code> never talks to Kafka directly: it writes
+      an <code>outbox_event</code> row in the same transaction as every
+      state change, and a separate scheduled poller (<code>OutboxRelay</code>)
+      is the only thing that actually calls <code>kafkaTemplate.send()</code>.
+      Two <code>@KafkaListener</code>s close the loop, reacting to
+      <code>payment-completed</code>/<code>payment-failed</code> to move the
+      order to its terminal state — <code>CONFIRMED</code>, or
+      <code>CANCELLED</code> after calling <code>inventory</code>'s
+      <code>/release</code> to give back the stock.
+    </p>
+
+    <h3>inventory</h3>
+    <p>
+      The simplest service on purpose: a REST API over one table
+      (<code>stock</code>), with no Kafka involvement whatsoever — everything
+      it does happens inside a single synchronous HTTP request. The one
+      subtlety is in <em>how</em> reserve/release mutate that table: one
+      atomic conditional <code>UPDATE ... WHERE qty &gt;= :n</code> (no
+      read-then-write gap for a race to land in), gated by an
+      <code>Idempotency-Key</code> so a retried call — including Istio's own
+      retry policy once Phase 4 lands — replays the stored result instead of
+      mutating stock twice.
+    </p>
+
+    <h3>payment</h3>
+    <p>
+      Exists entirely inside the saga — there's no reason for anything
+      outside the cluster to call it directly, so it has no meaningful REST
+      surface at all, just Actuator health endpoints. It consumes
+      <code>payment-requested</code>, checks Redis then Postgres to make
+      sure this exact order hasn't already been processed, then decides
+      approve/decline (a configurable failure rate exists specifically so
+      both saga branches are easy to trigger on demand) and publishes the
+      result.
+    </p>
+
+    <h3>notifications</h3>
+    <p>
+      The simplest service in the whole system: two <code>@KafkaListener</code>
+      methods, a log line each, the same two-tier idempotency check as
+      <code>payment</code>. It's deliberately the "end of the line" — nothing
+      downstream reacts to what it does, which is exactly what makes it a
+      safe place to simulate a side effect (an email/SMS send) without any
+      real consequence if it runs twice.
+    </p>
+
+    <h3>checkout-console &amp; the shared infrastructure</h3>
+    <p>
+      <code>checkout-console</code> (plain nginx) isn't a Spring Boot service
+      at all — it serves the static HTML/JS console and reverse-proxies
+      <code>/checkout</code> and <code>/orders/*</code> to the
+      <code>orders</code> Service, so the browser only ever talks to one
+      origin. <strong>Postgres</strong> is one instance with four separate
+      databases and logins — no service can see another's tables, even
+      though they share hardware. <strong>Redis</strong> is used by exactly
+      two services for exactly one purpose (idempotency fast-path) — not a
+      general-purpose cache, and specifically not in front of
+      <code>inventory</code>'s stock reads (see the Blueprint's "Where Redis
+      fits" analysis for why). <strong>Kafka</strong> is the only thing
+      connecting <code>orders</code>, <code>payment</code>, and
+      <code>notifications</code> — <code>inventory</code> never touches it.
+    </p>
+  </section>
 
   <section id="cluster">
     <div class="kicker">01</div>
