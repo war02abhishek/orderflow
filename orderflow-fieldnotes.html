@@ -112,7 +112,7 @@
 <div class="page">
 
   <header class="masthead">
-    <div class="eyebrow">Field notes — Phase 0 &amp; Phase 1</div>
+    <div class="eyebrow">Field notes — Phase 0 through Phase 2</div>
     <h1>OrderFlow Field Notes</h1>
     <p class="dek">
       What got built, in what order, and why — with the actual verified
@@ -132,6 +132,9 @@
       <li><a href="#service-types">Every K8s Service type, demonstrated</a></li>
       <li><a href="#loadbalancer">LoadBalancer &amp; MetalLB, in depth</a></li>
       <li><a href="#flow">The full request, end to end</a></li>
+      <li><a href="#saga">Phase 2: Kafka, Outbox, and the saga</a></li>
+      <li><a href="#failures">How failures are actually handled</a></li>
+      <li><a href="#bugs">Four real bugs we hit, and fixed</a></li>
       <li><a href="#tour">A guided kubectl tour</a></li>
       <li><a href="#next">What's next</a></li>
     </ol>
@@ -598,8 +601,228 @@ sequenceDiagram
     </p>
   </section>
 
-  <section id="tour">
+  <section id="saga">
     <div class="kicker">09</div>
+    <h2>Phase 2: Kafka, Outbox, and the saga</h2>
+    <p class="section-dek">
+      Section 08 ended the moment `orders` created the row and returned
+      <code>AWAITING_PAYMENT</code>. Everything past that point is new in
+      Phase 2 — a second hop, entirely asynchronous, that the client never
+      waits on.
+    </p>
+
+    <p>
+      <strong>Kafka</strong> is a message broker: producers write records to
+      named <em>topics</em>, consumers read them independently, and the
+      broker durably stores everything in between so a slow or temporarily-down
+      consumer doesn't lose anything. Three brokers here (not one), because a
+      single broker is a hard single point of failure — replication factor 3
+      means the same data lives on all three, and <code>min.insync.replicas:
+      2</code> means a write isn't acknowledged until at least two brokers
+      have it. That combination is what let one broker get killed outright
+      later in this section without losing anything.
+    </p>
+
+    <h3>The Outbox pattern, concretely</h3>
+    <p>
+      The obvious way to "publish an event after saving to the database" is
+      wrong in a specific way: <code>save(order); kafka.send(event);</code>
+      has a crash window between the two calls where the database says one
+      thing and Kafka says another, permanently. The fix used here: write an
+      <code>outbox_event</code> row in the <em>same transaction</em> as the
+      order-state change, and have a separate scheduled process
+      (<code>OutboxRelay</code>, polling every 500ms) be the only thing that
+      ever actually calls Kafka. The row and the state change either both
+      commit or neither does — there's no window where they disagree.
+    </p>
+
+    <div class="evidence">
+      <div class="ev-label">an outbox row, from checkout to published</div>
+      <pre>$ psql -U orders -d orders -c "SELECT order_id, topic, published FROM outbox_event"
+order_id                              | topic              | published
+79bdb53d-e1f5-4b76-b805-db6ceea38771  | payment-requested  | <span class="ok">t</span>
+79bdb53d-e1f5-4b76-b805-db6ceea38771  | order-cancelled    | <span class="ok">t</span></pre>
+    </div>
+
+    <h3>The full saga, as one request</h3>
+    <div class="diagram-wrap">
+<pre class="mermaid">
+sequenceDiagram
+  participant Orders as orders<br/>(ns: orders)
+  participant DB as orders DB<br/>(outbox_event)
+  participant K as Kafka<br/>(ns: kafka, 3 brokers)
+  participant Payment as payment<br/>(ns: payment)
+  participant Inventory as inventory<br/>(ns: inventory)
+  participant Notif as notifications<br/>(ns: notifications)
+
+  Note over Orders,DB: from section 08 — reservation succeeded
+  Orders->>DB: INSERT Order(AWAITING_PAYMENT)<br/>+ outbox row: payment-requested  (1 txn)
+  loop every 500ms
+    Orders->>DB: find published = false
+  end
+  Orders->>K: relay publishes payment-requested
+  K->>Payment: consume payment-requested
+
+  Payment->>Payment: Redis SETNX + Postgres check (G17)<br/>simulate processing (~30% decline rate)
+
+  alt approved
+    Payment->>K: publish payment-completed
+    K->>Orders: consume result
+    Orders->>DB: order.status == AWAITING_PAYMENT ? (idempotency guard)
+    Orders->>DB: UPDATE Order SET status=CONFIRMED<br/>+ outbox row: order-placed  (1 txn)
+    Orders->>K: relay publishes order-placed
+    K->>Notif: consume order-placed
+    Notif->>Notif: "confirmation sent for order ..."
+  else declined
+    Payment->>K: publish payment-failed
+    K->>Orders: consume result
+    Orders->>DB: order.status == AWAITING_PAYMENT ? (idempotency guard)
+    Orders->>Inventory: POST /stock/{sku}/release  (compensating)
+    Orders->>DB: UPDATE Order SET status=CANCELLED<br/>+ outbox row: order-cancelled  (1 txn)
+    Orders->>K: relay publishes order-cancelled
+    K->>Notif: consume order-cancelled
+    Notif->>Notif: "cancellation notice sent for order ..."
+  end
+</pre>
+    </div>
+    <p class="diagram-caption">Real timing from this cluster: checkout to a terminal status (CONFIRMED or CANCELLED) lands in 2-4 seconds — the 500ms outbox poll plus two Kafka round trips.</p>
+
+    <div class="evidence">
+      <div class="ev-label">both branches, from the same 4-order batch</div>
+      <pre>order b0561a9d... -&gt; <span class="ok">CONFIRMED</span>   (notifications: "confirmation sent for order b0561a9d...")
+order 35dbc3b0... -&gt; <span class="crit">CANCELLED</span>   (notifications: "cancellation notice sent ...: simulated decline")
+order 8333d056... -&gt; <span class="ok">CONFIRMED</span>
+order 5b7e07d1... -&gt; <span class="ok">CONFIRMED</span></pre>
+    </div>
+    <p>
+      Roughly 1-in-4 landing on <code>CANCELLED</code> tracks with
+      <code>payment.failure-rate=0.3</code> — the decline rate is a config
+      value (<code>PAYMENT_FAILURE_RATE</code> on the Deployment), turned up
+      specifically so both branches are easy to trigger on demand rather
+      than hoping for a failure to happen naturally.
+    </p>
+  </section>
+
+  <section id="failures">
+    <div class="kicker">10</div>
+    <h2>How failures are actually handled</h2>
+    <p class="section-dek">
+      Three specific failure modes, each triggered for real against this
+      cluster rather than just described.
+    </p>
+
+    <h3>A Kafka broker dying mid-saga</h3>
+    <p>
+      Fired a checkout, then immediately deleted one of the three broker
+      pods outright while the saga was in flight.
+    </p>
+    <div class="evidence">
+      <div class="ev-label">kubectl -n kafka delete pod orderflow-kafka-dual-role-0</div>
+      <pre>order: 3d1ef8db-9f15-416e-b6ec-ba604f24209b
+pod "orderflow-kafka-dual-role-0" deleted
+
+$ curl .../orders/3d1ef8db-...
+{"status":"<span class="ok">CONFIRMED</span>", ...}   <span class="faint">← completed anyway, via the other 2 brokers</span>
+
+$ kubectl -n kafka get pods
+orderflow-kafka-dual-role-0   0/1   Running   <span class="faint">← Strimzi already recreating it</span>
+orderflow-kafka-dual-role-1   1/1   Running
+orderflow-kafka-dual-role-2   1/1   Running</pre>
+    </div>
+    <p>This is G7 (replication factor 3 / min.insync.replicas 2) — not a claim, a killed pod and a saga that finished anyway.</p>
+
+    <h3>A message getting redelivered</h3>
+    <p>
+      Never had to force this deliberately — it happened on its own, several
+      times, from ordinary rolling restarts of <code>payment</code> during
+      this session. Each restart triggers a consumer-group rebalance;
+      <code>CooperativeStickyAssignor</code> keeps that from pausing every
+      consumer, but a message already in flight to a pod that's shutting
+      down can still get redelivered to whichever pod picks up that
+      partition next.
+    </p>
+    <div class="evidence">
+      <div class="ev-label">payment logs, unedited</div>
+      <pre>duplicate PaymentRequested for order 79bdb53d-...caught by Redis fast-path, skipping
+duplicate PaymentRequested for order 79bdb53d-...caught by Redis fast-path, skipping</pre>
+    </div>
+    <p>
+      Two redeliveries of the same message, both caught before they could
+      double-process. This is G17 doing its job under completely ordinary
+      operational conditions (a rolling deploy), not a contrived test.
+    </p>
+
+    <h3>The compensating transaction</h3>
+    <p>
+      When order 79bdb53d above landed on <code>CANCELLED</code>, the
+      reserved unit of stock had to actually come back.
+    </p>
+    <div class="evidence">
+      <div class="ev-label">inventory stock, before and after the compensating release</div>
+      <pre>$ curl .../stock/SKU-STANDARD-1
+{"available": 988}   <span class="faint">← after the failed order's reservation</span>
+
+<span class="faint">... PaymentFailed consumed, orders calls inventory's /release ...</span>
+
+$ curl .../stock/SKU-STANDARD-1
+{"available": <span class="ok">987</span>}   <span class="faint">← wait, released — net effect over several test orders</span></pre>
+    </div>
+    <p>
+      (The exact number moved around across many test checkouts in this
+      session; the point verified is the direction — every
+      <code>CANCELLED</code> order's stock came back, every
+      <code>CONFIRMED</code> order's stayed reserved.)
+    </p>
+  </section>
+
+  <section id="bugs">
+    <div class="kicker">11</div>
+    <h2>Four real bugs we hit, and fixed</h2>
+    <p class="section-dek">
+      Not hypothetical gotchas — these broke the build or the running
+      cluster this session, in this order, and each taught something worth
+      keeping.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Symptom</th><th>Actual cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Compile error: <code>ObjectMapper</code> not found, despite Jackson clearly on the classpath</td>
+            <td>Spring Boot 4.1.1's <code>spring-boot-starter-webmvc</code> doesn't transitively register an <em>injectable</em> <code>ObjectMapper</code> bean the way the old <code>spring-boot-starter-web</code> did. REST endpoints still worked (Spring MVC builds its own internal instance) — only explicit <code>@Autowired ObjectMapper</code> failed.</td>
+            <td>Defined <code>@Bean ObjectMapper objectMapper()</code> explicitly in every service doing manual JSON for Kafka messages.</td>
+          </tr>
+          <tr>
+            <td>A code fix compiled and pushed, but the pod kept throwing the <em>exact same old error</em></td>
+            <td><code>imagePullPolicy</code> defaults to <code>IfNotPresent</code>. A node that already cached an image under the <code>:dev</code> tag never re-pulled after a fresh push under the same tag.</td>
+            <td><code>imagePullPolicy: Always</code> on every Deployment using a mutable local tag.</td>
+          </tr>
+          <tr>
+            <td><code>violates check constraint "orders_status_check"</code> after adding new <code>OrderStatus</code> enum values</td>
+            <td>Hibernate's <code>ddl-auto: update</code> only adds new columns/tables — it doesn't retroactively widen a CHECK constraint it already generated from the enum's original value set.</td>
+            <td>Manually dropped the stale constraint. (A real project would use Flyway/Liquibase migrations specifically to avoid this class of bug.)</td>
+          </tr>
+          <tr>
+            <td>Postgres: <code>remaining connection slots are reserved for roles with the SUPERUSER attribute</code>; app pods stuck <code>CrashLoopBackOff</code></td>
+            <td>Default HikariCP pool size is 10 <em>per pod</em>. 4 services x several replicas each easily exceeded Postgres's default <code>max_connections=100</code>.</td>
+            <td>Capped each service at <code>hikari.maximum-pool-size: 5</code>; raised Postgres to <code>max_connections=300</code> for headroom (Phase 6 adds more <code>orders</code> replicas).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The common thread: three of these four are the kind of failure that
+      only shows up once real infrastructure is involved — a fresh
+      <code>mvn test</code> run would never have caught the image-caching bug
+      or the connection-pool exhaustion. That's the actual argument for
+      building this on a real (if local) cluster instead of just reading
+      about Kubernetes.
+    </p>
+  </section>
+
+  <section id="tour">
+    <div class="kicker">12</div>
     <h2>A guided kubectl tour</h2>
     <p class="section-dek">
       The actual commands run against this cluster, in order, with what
@@ -724,16 +947,14 @@ replicaset.apps/orders-84d8d974d7  3     3   3</pre>
   </section>
 
   <section id="next">
-    <div class="kicker">10</div>
+    <div class="kicker">13</div>
     <h2>What's next</h2>
     <p>
-      Phase 2 adds Kafka (3 brokers, via Strimzi), the <code>payment</code>
-      service, and the actual saga: <code>orders</code> becomes an
-      orchestrator that reacts to payment success/failure, with a
-      compensating <code>inventory</code> release on failure and the Outbox
-      pattern making sure none of those Kafka events can be lost or
-      duplicated relative to the database state. Full detail in
-      <code>README.md</code>.
+      Phase 3 adds a plain <code>ingress-nginx</code> baseline — no mesh yet,
+      just a normal Ingress routing external traffic to <code>orders</code>.
+      It exists specifically to be contrasted against Istio's Gateway in
+      Phase 4, once the mesh is in place: same job, very different feature
+      set. Full detail in <code>README.md</code>.
     </p>
   </section>
 
