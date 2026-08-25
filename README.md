@@ -4,7 +4,7 @@
 >
 > Learning walkthrough: [OrderFlow Field Notes](https://claude.ai/code/artifact/d7356850-5a1b-44c4-a92d-e917a24d0118) — start-to-finish, concept-first explanation of everything built through Phase 2 (nodes/clusters, NetworkPolicy/Calico, every K8s Service type, the Kafka/Outbox saga, real failure-handling proof, a guided `kubectl` tour), backed by actual verified output from the running cluster rather than hypothetical examples
 
-**Status:** Phases 0–2 complete and verified against a live cluster. Phase 3 (plain Ingress baseline) is next.
+**Status:** Phases 0–2 complete and verified against a live cluster. A flash-sale readiness decision (Redis fast-path for `inventory`'s idempotency, see below) is designed and next up to implement, before moving on to Phase 3 (plain Ingress baseline).
 
 - Phase 0: kind cluster `orderflow` (1 control-plane + 2 workers) with Calico as the CNI (kindnetd doesn't enforce NetworkPolicy — swapped it out so Phase 1's policies are real), a local image registry, Homebrew/kind/helm/istioctl installed without sudo.
 - Phase 1: `orders` + `inventory` (Spring Boot, Postgres), atomic stock reservation (G1) and idempotent reserve/release (G2) both verified live under concurrent load, readiness/liveness probes + resource limits + pod anti-affinity + graceful shutdown (G8–G10, G12) all in place, default-deny NetworkPolicy per namespace, every K8s Service type demonstrated (ClusterIP, NodePort, Headless, LoadBalancer via MetalLB, ExternalName), checkout console v1 deployed.
@@ -400,6 +400,97 @@ the same Grafana metrics as the promote/rollback signal; chaos testing
 (`kubectl delete pod`, Istio fault injection) during a simulated flash sale;
 later migrating the same manifests to a real managed cluster (EKS/GKE/DOKS)
 once the mechanics are solid.
+
+## Flash-sale readiness pass: inventory idempotency via Redis
+
+**Status: designed, not yet implemented.** This section documents a decision
+made after Phase 2 was built and verified — it's a plan to execute next, not
+a description of what's currently running. Came up because this project
+isn't purely a learning lab anymore: the goal shifted to actually being
+correct, consistent, and low-latency under real flash-sale traffic, not just
+demonstrating each concept once. That bar changes which trade-offs are worth
+making, so it's worth re-deciding some Phase 1/2 choices against it
+explicitly rather than assuming "later phases will handle it."
+
+### The current logic, as it exists today
+
+`inventory.reserve()` and `.release()` (Phase 1, G1/G2) make **4 Postgres
+round trips per call**, every time, even for a first-time request:
+
+1. `idempotencyRepository.findById(key)` — has this key been seen before?
+2. `stockRepository.reserveAtomic(...)` — the atomic `UPDATE ... WHERE qty >= n`
+3. `stockRepository.findById(sku)` — re-read the row to report remaining stock
+4. `idempotencyRepository.save(record)` — durably record the outcome
+
+This is correct — G1 (no overselling) and G2 (safe retries) both hold — but
+under real flash-sale concurrency on a popular SKU, it's a lot of synchronous
+database work sitting directly in the checkout critical path, and it's the
+first place this system is actually likely to slow down under load.
+
+### Options considered
+
+| # | Approach | Solves | New risk | Complexity |
+|---|---|---|---|---|
+| A | `UPDATE ... RETURNING` (collapse calls #2+#3) | Removes 1 redundant round trip | None | Trivial |
+| **B** | **Redis fast-path cache in front of the existing Postgres logic** | **Removes all 4 Postgres calls, but only on a *retry* of an already-seen `Idempotency-Key`** | **None — Postgres stays sole stock authority** | **Low** |
+| C | Redis-fronted stock counter (Lua script), Postgres reconciled async via a Redis Stream | Raises the hot-SKU throughput ceiling itself, not just retries | Real: a narrow reseed window where overselling becomes possible again if Redis loses data before reconciling | High |
+| D | Sharded counters in Postgres (`stock_shard(sku, shard_id, qty)`) | Spreads lock contention across N rows, no Redis at all | None (still pure Postgres ACID) | Moderate — shard-selection + fallback logic |
+| E | Virtual queue in front of checkout (admit at a controlled rate) | Sidesteps the write-throughput question entirely | None | Moderate, and UX-visible to users |
+
+**Decision: Option B.** It's the one that removes real load from Postgres
+with zero new correctness risk — the trade a production flash-sale system
+should make first, before reaching for anything that changes what's
+authoritative for stock. B and D compose cleanly if more throughput is
+needed later; C is explicitly *not* being done now — see below.
+
+### Design: Option B
+
+Redis caches the **outcome**, not just a "have I seen this" boolean — that's
+what lets a retry skip Postgres entirely instead of still needing a
+round trip to find out what happened last time.
+
+```mermaid
+sequenceDiagram
+  participant O as orders
+  participant I as inventory
+  participant R as Redis (ns: cache)
+  participant PG as Postgres (ns: data)
+
+  O->>I: POST /stock/{sku}/reserve, Idempotency-Key: K
+  I->>R: GET idempotency:inventory:reserve:K
+
+  alt cached (this is a retry)
+    R-->>I: "OK:987" or "FAIL:988"
+    I-->>O: cached result -- Postgres never touched
+  else not cached (first attempt for this key)
+    I->>PG: idempotency_record lookup (durable check, unchanged from today)
+    I->>PG: atomic UPDATE ... WHERE qty >= n RETURNING qty (Option A folded in here)
+    I->>PG: save idempotency_record
+    I->>R: SET idempotency:inventory:reserve:K "OK:987" EX 86400
+    I-->>O: result
+  end
+```
+
+`release()` gets the same treatment, symmetrically.
+
+**What this does and doesn't fix, stated honestly:** a genuinely first-time
+request still does the full Postgres path — B doesn't make the very first
+attempt faster, and it does **not** raise the hot-row throughput ceiling
+(that's what Option C would be for, if it's ever actually needed). What it
+fixes is the *retry-storm amplification problem*: under load, timeouts cause
+retries (a client's, or Istio's own retry policy once Phase 4 lands), and
+without this, every retry re-does all 4 Postgres calls on an already-stressed
+database — the exact moment you can least afford that. With it, retries are
+absorbed by Redis and never touch Postgres again after the first attempt.
+
+**What implementation will actually need** (not done yet, listed so the plan
+is complete): a `RedisTemplate`/`StringRedisTemplate` bean in `inventory`
+(currently has none — Redis is only wired into `payment`/`notifications`
+today), a `NetworkPolicy` allowing `inventory` → `cache` namespace egress on
+6379 (and the matching ingress rule on `cache`, mirroring the existing
+`payment`/`notifications` rules), and the cache-check wrapping the existing
+`InventoryService.reserve()`/`release()` methods without changing their
+internal logic.
 
 ## Verification approach
 
