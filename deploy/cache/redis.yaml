@@ -1,7 +1,27 @@
 # Narrow use, on purpose: idempotency fast-path for payment/notifications'
-# Kafka consumers (G17) and inventory's reserve/release (G2). Not a general
-# cache -- see the "Where Redis fits" analysis in orderflow-blueprint.html
-# for why it's deliberately not in front of the stock-reservation read path.
+# Kafka consumers (G17), inventory's reserve/release (Phase 1 idempotency,
+# flash-sale readiness Option B), and -- as of Option C -- the hot-path
+# stock counter itself for inventory. Not a general cache -- see the
+# "Where Redis fits" analysis in orderflow-blueprint.html.
+#
+# AOF persistence + a PVC matter a lot now that Option C makes Redis
+# provisionally authoritative for stock counts: without them, every pod
+# restart (which this cluster has hit often, just from Docker Desktop
+# cycling) is a full data-loss event for whatever hadn't reconciled to
+# Postgres yet -- exactly the risk window documented in the README.
+# `everysec` fsync doesn't eliminate that window, but shrinks it from
+# "every restart" to "up to ~1s of writes right before a crash."
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: cache
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,6 +29,8 @@ metadata:
   namespace: cache
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: redis
@@ -20,8 +42,19 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --dir
+            - /data
           ports:
             - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
           readinessProbe:
             exec:
               command: [redis-cli, ping]
@@ -39,6 +72,10 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data
 ---
 apiVersion: v1
 kind: Service

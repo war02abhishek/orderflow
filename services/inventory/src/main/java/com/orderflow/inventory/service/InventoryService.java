@@ -1,18 +1,27 @@
 package com.orderflow.inventory.service;
 
-import com.orderflow.inventory.domain.IdempotencyRecord;
 import com.orderflow.inventory.exception.SkuNotFoundException;
-import com.orderflow.inventory.repo.IdempotencyRepository;
 import com.orderflow.inventory.repo.StockRepository;
 import java.time.Duration;
-import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Flash-sale readiness pass, Option C: Redis is now the sole, atomic
+ * authority for both the idempotency check and the stock decision (see
+ * reserve_release.lua) -- Postgres is a durable mirror the
+ * StockReconciler keeps in sync afterward, not a party to this call at
+ * all. That's the trade this system made explicitly, with README
+ * documenting the accepted risk: if Redis loses data before an entry
+ * reconciles to Postgres, a reseed-from-Postgres can restore a stock count
+ * higher than reality, reopening a narrow window where G1's no-overselling
+ * guarantee could be violated. Frequent reconciliation and Redis AOF
+ * persistence shrink that window; they don't erase it.
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -21,120 +30,60 @@ public class InventoryService {
     private static final String RESERVE = "RESERVE";
     private static final String RELEASE = "RELEASE";
     private static final String INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK";
-    private static final String REDIS_KEY_PREFIX = "idempotency:inventory:";
+    private static final String IDEMPOTENCY_KEY_PREFIX = "idempotency:inventory:";
+    private static final String STOCK_KEY_PREFIX = "stock:";
+    private static final String STREAM_KEY = "stock:reconciliation";
     private static final Duration REDIS_TTL = Duration.ofHours(24);
 
     private final StockRepository stockRepository;
-    private final IdempotencyRepository idempotencyRepository;
     private final StringRedisTemplate redisTemplate;
+    private final RedisScript<String> reserveReleaseScript;
 
     public record Outcome(boolean success, int remaining, String errorCode) {
     }
 
-    @Transactional
     public Outcome reserve(String sku, int qty, String idempotencyKey) {
-        return withIdempotency(idempotencyKey, sku, RESERVE, qty, () -> {
-            // RETURNING folds the mutation and the read-back into one round
-            // trip on the success path (Option A); a null result means the
-            // WHERE clause matched no row (insufficient stock), so that one
-            // still needs a separate read to report what's actually left.
-            Integer remainingAfter = stockRepository.reserveAtomicReturning(sku, qty);
-            return remainingAfter != null
-                    ? new Outcome(true, remainingAfter, null)
-                    : new Outcome(false, currentStock(sku), INSUFFICIENT_STOCK);
-        });
+        return runScript(RESERVE, sku, qty, idempotencyKey);
     }
 
-    @Transactional
     public Outcome release(String sku, int qty, String idempotencyKey) {
-        return withIdempotency(idempotencyKey, sku, RELEASE, qty, () -> {
-            Integer remainingAfter = stockRepository.releaseAtomicReturning(sku, qty);
-            if (remainingAfter == null) {
-                throw new SkuNotFoundException(sku);
-            }
-            return new Outcome(true, remainingAfter, null);
-        });
+        return runScript(RELEASE, sku, qty, idempotencyKey);
     }
 
     public int currentStock(String sku) {
+        String value = redisTemplate.opsForValue().get(STOCK_KEY_PREFIX + sku);
+        if (value != null) {
+            return Integer.parseInt(value);
+        }
         return stockRepository.findById(sku)
                 .orElseThrow(() -> new SkuNotFoundException(sku))
                 .getAvailableQty();
     }
 
-    /**
-     * Flash-sale readiness pass (see README): a Redis fast-path sits in
-     * front of the durable Postgres check (G2). A retry of an
-     * already-seen key is answered straight from Redis, never touching
-     * Postgres at all -- this is specifically what stops a retry storm
-     * under load from compounding onto an already-stressed database. It
-     * does not speed up a genuinely first-time request, which still needs
-     * the full Postgres path below since the mutation itself has to
-     * happen somewhere durable; Redis just remembers the answer afterward
-     * so the *next* attempt at this exact key is free.
-     */
-    private Outcome withIdempotency(String idempotencyKey, String sku, String operation, int qty,
-            java.util.function.Supplier<Outcome> action) {
-        String redisKey = REDIS_KEY_PREFIX + operation + ":" + idempotencyKey;
+    private Outcome runScript(String operation, String sku, int qty, String idempotencyKey) {
+        String idempotencyRedisKey = IDEMPOTENCY_KEY_PREFIX + operation + ":" + idempotencyKey;
+        String stockRedisKey = STOCK_KEY_PREFIX + sku;
 
-        String cached = redisTemplate.opsForValue().get(redisKey);
-        if (cached != null) {
-            log.info("duplicate {} for key {} caught by Redis fast-path, Postgres not touched",
-                    operation, idempotencyKey);
-            return decodeOutcome(cached);
+        String result = redisTemplate.execute(
+                reserveReleaseScript,
+                List.of(idempotencyRedisKey, stockRedisKey, STREAM_KEY),
+                String.valueOf(qty), sku, String.valueOf(REDIS_TTL.toSeconds()), operation);
+
+        return parseResult(result, sku, operation, idempotencyKey);
+    }
+
+    private Outcome parseResult(String result, String sku, String operation, String idempotencyKey) {
+        if (result.startsWith("OK:")) {
+            return new Outcome(true, Integer.parseInt(result.substring(3)), null);
         }
-
-        var existing = idempotencyRepository.findById(idempotencyKey);
-        if (existing.isPresent()) {
-            log.info("duplicate {} for key {} caught by Postgres backstop (Redis was cold), caching for next time",
-                    operation, idempotencyKey);
-            Outcome outcome = toOutcome(existing.get());
-            cacheInRedis(redisKey, outcome);
-            return outcome;
+        if (result.startsWith("FAIL:")) {
+            return new Outcome(false, Integer.parseInt(result.substring(5)), INSUFFICIENT_STOCK);
         }
-
-        Outcome outcome = action.get();
-
-        IdempotencyRecord record = new IdempotencyRecord();
-        record.setIdempotencyKey(idempotencyKey);
-        record.setSku(sku);
-        record.setOperation(operation);
-        record.setQuantity(qty);
-        record.setSuccess(outcome.success());
-        record.setErrorCode(outcome.errorCode());
-        record.setRemainingAfter(outcome.remaining());
-        record.setCreatedAt(Instant.now());
-
-        try {
-            idempotencyRepository.save(record);
-        } catch (DataIntegrityViolationException raceOnSameKey) {
-            outcome = idempotencyRepository.findById(idempotencyKey)
-                    .map(this::toOutcome)
-                    .orElse(outcome);
+        if (result.startsWith("ERROR:SKU_NOT_FOUND")) {
+            throw new SkuNotFoundException(sku);
         }
-
-        cacheInRedis(redisKey, outcome);
-        return outcome;
-    }
-
-    private void cacheInRedis(String redisKey, Outcome outcome) {
-        redisTemplate.opsForValue().set(redisKey, encodeOutcome(outcome), REDIS_TTL);
-    }
-
-    private Outcome toOutcome(IdempotencyRecord record) {
-        return new Outcome(record.isSuccess(), record.getRemainingAfter(), record.getErrorCode());
-    }
-
-    private String encodeOutcome(Outcome outcome) {
-        return outcome.success() + ":" + outcome.remaining() + ":"
-                + (outcome.errorCode() == null ? "" : outcome.errorCode());
-    }
-
-    private Outcome decodeOutcome(String encoded) {
-        String[] parts = encoded.split(":", 3);
-        boolean success = Boolean.parseBoolean(parts[0]);
-        int remaining = Integer.parseInt(parts[1]);
-        String errorCode = (parts.length > 2 && !parts[2].isEmpty()) ? parts[2] : null;
-        return new Outcome(success, remaining, errorCode);
+        log.warn("unexpected reserve_release.lua result for {} {} key={}: {}",
+                operation, sku, idempotencyKey, result);
+        throw new IllegalStateException("unexpected Redis script result: " + result);
     }
 }
