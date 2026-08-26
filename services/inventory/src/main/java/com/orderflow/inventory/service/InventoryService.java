@@ -1,26 +1,32 @@
 package com.orderflow.inventory.service;
 
 import com.orderflow.inventory.domain.IdempotencyRecord;
-import com.orderflow.inventory.domain.Stock;
 import com.orderflow.inventory.exception.SkuNotFoundException;
 import com.orderflow.inventory.repo.IdempotencyRepository;
 import com.orderflow.inventory.repo.StockRepository;
+import java.time.Duration;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class InventoryService {
 
     private static final String RESERVE = "RESERVE";
     private static final String RELEASE = "RELEASE";
     private static final String INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK";
+    private static final String REDIS_KEY_PREFIX = "idempotency:inventory:";
+    private static final Duration REDIS_TTL = Duration.ofHours(24);
 
     private final StockRepository stockRepository;
     private final IdempotencyRepository idempotencyRepository;
+    private final StringRedisTemplate redisTemplate;
 
     public record Outcome(boolean success, int remaining, String errorCode) {
     }
@@ -28,19 +34,25 @@ public class InventoryService {
     @Transactional
     public Outcome reserve(String sku, int qty, String idempotencyKey) {
         return withIdempotency(idempotencyKey, sku, RESERVE, qty, () -> {
-            int updated = stockRepository.reserveAtomic(sku, qty);
-            int remaining = currentStock(sku);
-            return updated > 0
-                    ? new Outcome(true, remaining, null)
-                    : new Outcome(false, remaining, INSUFFICIENT_STOCK);
+            // RETURNING folds the mutation and the read-back into one round
+            // trip on the success path (Option A); a null result means the
+            // WHERE clause matched no row (insufficient stock), so that one
+            // still needs a separate read to report what's actually left.
+            Integer remainingAfter = stockRepository.reserveAtomicReturning(sku, qty);
+            return remainingAfter != null
+                    ? new Outcome(true, remainingAfter, null)
+                    : new Outcome(false, currentStock(sku), INSUFFICIENT_STOCK);
         });
     }
 
     @Transactional
     public Outcome release(String sku, int qty, String idempotencyKey) {
         return withIdempotency(idempotencyKey, sku, RELEASE, qty, () -> {
-            stockRepository.releaseAtomic(sku, qty);
-            return new Outcome(true, currentStock(sku), null);
+            Integer remainingAfter = stockRepository.releaseAtomicReturning(sku, qty);
+            if (remainingAfter == null) {
+                throw new SkuNotFoundException(sku);
+            }
+            return new Outcome(true, remainingAfter, null);
         });
     }
 
@@ -51,18 +63,34 @@ public class InventoryService {
     }
 
     /**
-     * Looks up the idempotency key first (G2): a retried request — from the
-     * caller or from Istio's own retry policy in Phase 4 — replays the
-     * stored outcome instead of mutating stock again. A same-key race that
-     * slips past the initial lookup still can't double-mutate: the second
-     * writer hits the idempotency table's primary-key constraint and falls
-     * back to reading the first writer's result.
+     * Flash-sale readiness pass (see README): a Redis fast-path sits in
+     * front of the durable Postgres check (G2). A retry of an
+     * already-seen key is answered straight from Redis, never touching
+     * Postgres at all -- this is specifically what stops a retry storm
+     * under load from compounding onto an already-stressed database. It
+     * does not speed up a genuinely first-time request, which still needs
+     * the full Postgres path below since the mutation itself has to
+     * happen somewhere durable; Redis just remembers the answer afterward
+     * so the *next* attempt at this exact key is free.
      */
     private Outcome withIdempotency(String idempotencyKey, String sku, String operation, int qty,
             java.util.function.Supplier<Outcome> action) {
+        String redisKey = REDIS_KEY_PREFIX + operation + ":" + idempotencyKey;
+
+        String cached = redisTemplate.opsForValue().get(redisKey);
+        if (cached != null) {
+            log.info("duplicate {} for key {} caught by Redis fast-path, Postgres not touched",
+                    operation, idempotencyKey);
+            return decodeOutcome(cached);
+        }
+
         var existing = idempotencyRepository.findById(idempotencyKey);
         if (existing.isPresent()) {
-            return toOutcome(existing.get());
+            log.info("duplicate {} for key {} caught by Postgres backstop (Redis was cold), caching for next time",
+                    operation, idempotencyKey);
+            Outcome outcome = toOutcome(existing.get());
+            cacheInRedis(redisKey, outcome);
+            return outcome;
         }
 
         Outcome outcome = action.get();
@@ -80,15 +108,33 @@ public class InventoryService {
         try {
             idempotencyRepository.save(record);
         } catch (DataIntegrityViolationException raceOnSameKey) {
-            return idempotencyRepository.findById(idempotencyKey)
+            outcome = idempotencyRepository.findById(idempotencyKey)
                     .map(this::toOutcome)
                     .orElse(outcome);
         }
 
+        cacheInRedis(redisKey, outcome);
         return outcome;
+    }
+
+    private void cacheInRedis(String redisKey, Outcome outcome) {
+        redisTemplate.opsForValue().set(redisKey, encodeOutcome(outcome), REDIS_TTL);
     }
 
     private Outcome toOutcome(IdempotencyRecord record) {
         return new Outcome(record.isSuccess(), record.getRemainingAfter(), record.getErrorCode());
+    }
+
+    private String encodeOutcome(Outcome outcome) {
+        return outcome.success() + ":" + outcome.remaining() + ":"
+                + (outcome.errorCode() == null ? "" : outcome.errorCode());
+    }
+
+    private Outcome decodeOutcome(String encoded) {
+        String[] parts = encoded.split(":", 3);
+        boolean success = Boolean.parseBoolean(parts[0]);
+        int remaining = Integer.parseInt(parts[1]);
+        String errorCode = (parts.length > 2 && !parts[2].isEmpty()) ? parts[2] : null;
+        return new Outcome(success, remaining, errorCode);
     }
 }

@@ -4,7 +4,7 @@
 >
 > Learning walkthrough: [OrderFlow Field Notes](https://claude.ai/code/artifact/d7356850-5a1b-44c4-a92d-e917a24d0118) — start-to-finish, concept-first explanation of everything built through Phase 2 (nodes/clusters, NetworkPolicy/Calico, every K8s Service type, the Kafka/Outbox saga, real failure-handling proof, a guided `kubectl` tour), backed by actual verified output from the running cluster rather than hypothetical examples
 
-**Status:** Phases 0–2 complete and verified against a live cluster. A flash-sale readiness decision (Redis fast-path for `inventory`'s idempotency, see below) is designed and next up to implement, before moving on to Phase 3 (plain Ingress baseline).
+**Status:** Phases 0–2 complete, plus the flash-sale readiness pass (Redis fast-path for `inventory`'s idempotency, Option B below) — all verified against a live cluster. Phase 3 (plain Ingress baseline) is next.
 
 - Phase 0: kind cluster `orderflow` (1 control-plane + 2 workers) with Calico as the CNI (kindnetd doesn't enforce NetworkPolicy — swapped it out so Phase 1's policies are real), a local image registry, Homebrew/kind/helm/istioctl installed without sudo.
 - Phase 1: `orders` + `inventory` (Spring Boot, Postgres), atomic stock reservation (G1) and idempotent reserve/release (G2) both verified live under concurrent load, readiness/liveness probes + resource limits + pod anti-affinity + graceful shutdown (G8–G10, G12) all in place, default-deny NetworkPolicy per namespace, every K8s Service type demonstrated (ClusterIP, NodePort, Headless, LoadBalancer via MetalLB, ExternalName), checkout console v1 deployed.
@@ -403,18 +403,16 @@ once the mechanics are solid.
 
 ## Flash-sale readiness pass: inventory idempotency via Redis
 
-**Status: designed, not yet implemented.** This section documents a decision
-made after Phase 2 was built and verified — it's a plan to execute next, not
-a description of what's currently running. Came up because this project
-isn't purely a learning lab anymore: the goal shifted to actually being
-correct, consistent, and low-latency under real flash-sale traffic, not just
+**Status: implemented and verified.** Came up because this project isn't
+purely a learning lab anymore: the goal shifted to actually being correct,
+consistent, and low-latency under real flash-sale traffic, not just
 demonstrating each concept once. That bar changes which trade-offs are worth
-making, so it's worth re-deciding some Phase 1/2 choices against it
+making, so it was worth re-deciding some Phase 1/2 choices against it
 explicitly rather than assuming "later phases will handle it."
 
-### The current logic, as it exists today
+### The logic before this pass (Phase 1/2)
 
-`inventory.reserve()` and `.release()` (Phase 1, G1/G2) make **4 Postgres
+`inventory.reserve()` and `.release()` (Phase 1, G1/G2) made **4 Postgres
 round trips per call**, every time, even for a first-time request:
 
 1. `idempotencyRepository.findById(key)` — has this key been seen before?
@@ -483,14 +481,36 @@ without this, every retry re-does all 4 Postgres calls on an already-stressed
 database — the exact moment you can least afford that. With it, retries are
 absorbed by Redis and never touch Postgres again after the first attempt.
 
-**What implementation will actually need** (not done yet, listed so the plan
-is complete): a `RedisTemplate`/`StringRedisTemplate` bean in `inventory`
-(currently has none — Redis is only wired into `payment`/`notifications`
-today), a `NetworkPolicy` allowing `inventory` → `cache` namespace egress on
-6379 (and the matching ingress rule on `cache`, mirroring the existing
-`payment`/`notifications` rules), and the cache-check wrapping the existing
-`InventoryService.reserve()`/`release()` methods without changing their
-internal logic.
+### What actually got built
+
+Both A and B, together — A on its own doesn't need Redis and was free to
+fold in at the same time. `StockRepository.reserveAtomicReturning()` /
+`releaseAtomicReturning()` replace the old `reserveAtomic()` +
+`currentStock()` pair with one native query each
+(`UPDATE ... RETURNING available_qty`) — a `null` result means the `WHERE`
+clause matched no row (not enough stock), everything else returns the new
+quantity directly. `InventoryService.withIdempotency()` now checks Redis
+first (`GET idempotency:inventory:{operation}:{key}`) before ever touching
+Postgres, and caches the outcome after a first-time Postgres path completes.
+
+One real Spring Data JPA subtlety hit along the way: `RETURNING` only
+actually reaches your code if the query method is **not** annotated
+`@Modifying` — with `@Modifying`, Hibernate calls `executeUpdate()`, which
+returns a row count and silently discards the returned column. Dropping
+`@Modifying` and letting Hibernate treat it as result-producing is what
+makes the returned value show up.
+
+**Verified against the live cluster:** a repeated `Idempotency-Key` is now
+answered straight from Redis (confirmed both by reading the cached value
+directly out of Redis and via a new log line —
+`duplicate RESERVE for key ... caught by Redis fast-path, Postgres not
+touched`), and G1 was re-run (10-15 concurrent requests against a
+near-empty SKU) to confirm the atomic-decrement guarantee still holds
+exactly as before — zero regressions, stock never went negative.
+
+NetworkPolicy: `inventory` got a new `allow-inventory-egress-to-redis` rule,
+and the existing `cache` namespace ingress rule was extended to admit
+`inventory` alongside `payment`/`notifications`.
 
 ## Verification approach
 

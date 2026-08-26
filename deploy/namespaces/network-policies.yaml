@@ -480,8 +480,9 @@ spec:
       ports:
         - { protocol: TCP, port: 5432 }
 
-# --- payment/notifications: egress to redis (idempotency fast-path, G17),
-#     and redis accepts only them
+# --- payment/notifications/inventory: egress to redis (idempotency
+#     fast-path -- G17 for payment/notifications, the flash-sale readiness
+#     pass for inventory), and redis accepts only them
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -528,6 +529,27 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-inventory-egress-to-redis
+  namespace: inventory
+spec:
+  podSelector:
+    matchLabels:
+      app: inventory
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cache
+          podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - { protocol: TCP, port: 6379 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-payment-notifications-to-redis
   namespace: cache
 spec:
@@ -543,5 +565,8 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: notifications
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: inventory
       ports:
         - { protocol: TCP, port: 6379 }

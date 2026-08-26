@@ -50,6 +50,8 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PASSWORD
+            - name: REDIS_HOST
+              value: redis.cache.svc.cluster.local
           lifecycle:
             preStop:
               exec:
