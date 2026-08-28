@@ -4,13 +4,15 @@
 >
 > Learning walkthrough: [OrderFlow Field Notes](https://claude.ai/code/artifact/d7356850-5a1b-44c4-a92d-e917a24d0118) — start-to-finish, concept-first explanation of everything built through Phase 2 (nodes/clusters, NetworkPolicy/Calico, every K8s Service type, the Kafka/Outbox saga, real failure-handling proof, a guided `kubectl` tour), backed by actual verified output from the running cluster rather than hypothetical examples
 
-**Status:** Phases 0–2 complete, plus the flash-sale readiness pass (Redis-fronted stock counter for `inventory`, Option C below — supersedes the earlier Option A/B pass) — all verified against a live cluster. Phase 3 (plain Ingress baseline) is next.
+**Status:** Phases 0–3 complete, plus the flash-sale readiness pass (Redis-fronted stock counter for `inventory`, Option C below — supersedes the earlier Option A/B pass) — all verified against a live cluster. Phase 4 (Istio service mesh) is next.
 
 - Phase 0: kind cluster `orderflow` (1 control-plane + 2 workers) with Calico as the CNI (kindnetd doesn't enforce NetworkPolicy — swapped it out so Phase 1's policies are real), a local image registry, Homebrew/kind/helm/istioctl installed without sudo.
 - Phase 1: `orders` + `inventory` (Spring Boot, Postgres), atomic stock reservation (G1) and idempotent reserve/release (G2) both verified live under concurrent load, readiness/liveness probes + resource limits + pod anti-affinity + graceful shutdown (G8–G10, G12) all in place, default-deny NetworkPolicy per namespace, every K8s Service type demonstrated (ClusterIP, NodePort, Headless, LoadBalancer via MetalLB, ExternalName), checkout console v1 deployed.
 - Phase 2: 3-broker Kafka via Strimzi (KRaft, no ZooKeeper) survives a broker being killed mid-saga (G7, verified live); `payment` and `notifications` built, both consuming with `CooperativeStickyAssignor` and a Redis-fast-path + Postgres-backstop idempotency check (G17, caught real redeliveries live during rollout restarts); the Outbox pattern in `orders` (outbox table + scheduled relay, `acks=all` + idempotent producer per G3) drives the full saga — checkout → `AWAITING_PAYMENT` → payment succeeds (`CONFIRMED`) or fails (compensating `inventory` release → `CANCELLED`) → `notifications` logs the outcome — verified end-to-end for both paths. Consistency model written up in `docs/07-saga-and-outbox.md` (G16).
+- Phase 3: `ingress-nginx` (baremetal/NodePort provider, since this cluster has no `extraPortMappings` for host-level access) installed with path-based routing to `orders` (`/checkout`, `/orders/*`) via `deploy/ingress/orders-ingress.yaml`. `allow-ingress-to-orders` tightened from "anywhere" (the Phase 1/2 placeholder) to only `ingress-nginx` and `console`'s own reverse proxy — and testing this tightening surfaced a real, closed gap: curling the old `orders-nodeport` Service from *inside its own node* could reach the pod without the request being attributable to any pod/namespace NetworkPolicy could match (confirmed against a clean pod-to-pod control test from an unrelated namespace, which *was* correctly blocked), so `orders-nodeport` was removed rather than left as a bypassable side door — `deploy/ingress/` is the only front door to `orders` now. Full checkout→confirmed saga re-verified end-to-end through the new Ingress path, including load balancing across `orders` replicas on the poll.
 - **Known environment caveat (Phase 1, still applies):** MetalLB assigns a real external IP correctly (the K8s-level lesson), but L2 packet delivery to that IP doesn't work on Docker Desktop for Mac's virtualized networking (confirmed via ARP: the ip neigh table never resolves the VIP) — a documented Docker-Desktop-for-Mac limitation, not a MetalLB or cluster misconfiguration. Works as expected on a native Linux Docker host.
 - **Lessons learned during Phase 2** (worth knowing if you hit them again): Spring Boot 4's `spring-boot-starter-webmvc` doesn't transitively provide an injectable `ObjectMapper` bean the way older `spring-boot-starter-web` did — needed an explicit `@Bean ObjectMapper` in every service that does manual JSON (de)serialization for Kafka messages. `imagePullPolicy` defaults to `IfNotPresent`, so redeploying a rebuilt image under the same `:dev` tag silently reused the stale cached image until `imagePullPolicy: Always` was added to every Deployment. Hibernate's `ddl-auto: update` doesn't retroactively fix an existing CHECK constraint (or a `@Lob` column's underlying type) when a Java enum or annotation changes — needed a manual `ALTER TABLE`/`DROP TABLE` once per schema change. Default HikariCP pool size (10) × 4 services × several replicas exceeded Postgres's default `max_connections=100` — fixed by capping each service's pool at 5 and raising Postgres to 300.
+- **Lesson learned during Phase 3:** a NodePort curled from `localhost` inside the very node it's bound on isn't a reliable way to test NetworkPolicy enforcement — that path can reach the target pod without the request ever presenting a source pod/namespace identity Calico can match against, so it can appear to "pass" through a policy that would correctly block the same request from anywhere else. A clean pod-to-pod test (a throwaway pod in an unrelated namespace hitting the target's ClusterIP) is the reliable way to verify a NetworkPolicy actually enforces.
 
 ## Context
 
@@ -510,6 +512,24 @@ to shrink that window, not just to make the feature work:
   the risk window over time (every pod restart with in-flight work
   orphaning an entry, permanently) rather than shrinking it — found and
   fixed during this same pass, not a pre-existing gap.
+
+**Why `XPENDING`/`XCLAIM`, not just a Kafka-style offset commit:** a Redis
+Streams consumer group tracks two separate things — a group *read cursor*
+(like a Kafka partition offset, only moves forward, what
+`ReadOffset.lastConsumed()` uses to find genuinely-new entries) and a
+**Pending Entries List (PEL)**: a per-entry record of "delivered to
+consumer X, not yet acknowledged," added the instant `XREADGROUP` delivers
+an entry and removed only by an explicit `XACK`. Kafka has no equivalent —
+its offset is a single blocking pointer, so a stuck record holds up
+everything behind it. The PEL is what lets `reconcile()` keep consuming
+brand-new entries every 300ms while one stuck entry from a dead pod sits
+untouched in the PEL, and it's exactly what `reclaimStaleEntries()` queries
+(`XPENDING` to find anything idle >10s, `XCLAIM` to hand it to a live pod's
+identity) to recover that entry independently, without blocking the main
+loop on it. Net effect: the same "only advance past work once it's written
+to Postgres and acked" at-least-once guarantee Kafka's manual offset commit
+gives you, just tracked per-entry instead of as one pointer that can get
+wedged.
 
 ### What was verified against the live cluster, not just designed
 

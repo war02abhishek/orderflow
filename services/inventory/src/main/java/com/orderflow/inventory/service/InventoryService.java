@@ -64,6 +64,9 @@ public class InventoryService {
         String idempotencyRedisKey = IDEMPOTENCY_KEY_PREFIX + operation + ":" + idempotencyKey;
         String stockRedisKey = STOCK_KEY_PREFIX + sku;
 
+//        a single Lua script in Redis that atomically checks the Idempotency-Key,
+//                decides against the live stock:{sku} counter,
+//                and queues the result for Postgres to catch up on later — one Redis round trip,
         String result = redisTemplate.execute(
                 reserveReleaseScript,
                 List.of(idempotencyRedisKey, stockRedisKey, STREAM_KEY),

@@ -229,8 +229,18 @@ spec:
       ports:
         - { protocol: TCP, port: 8080 }
 
-# --- orders: accept ingress from anywhere for now (no Ingress/Gateway
-#     until Phase 3/4 -- this is what's exposed via NodePort while testing)
+# --- orders: Phase 3 tightens this from "anywhere" (the Phase 1/2
+#     placeholder, back when the only front door was a raw NodePort while
+#     testing) to two legitimate callers: ingress-nginx (the new real
+#     front door, deploy/ingress/orders-ingress.yaml) and console (its own
+#     nginx reverse-proxies /checkout + /orders/ directly to this Service,
+#     bypassing the Ingress entirely -- a second, internal caller, not the
+#     thing being locked down). What this *does* close off: the raw
+#     orders-nodeport Service used for ad hoc testing through Phase 1/2 no
+#     longer reaches the pod at all -- confirmed live, it now times out.
+#     Direct pod access for debugging still works via `kubectl
+#     port-forward`, which tunnels through the kubelet rather than the
+#     CNI's pod network path and so isn't subject to NetworkPolicy at all.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -243,7 +253,17 @@ spec:
       app: orders
   policyTypes: [Ingress]
   ingress:
-    - ports:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: console
+          podSelector:
+            matchLabels:
+              app: checkout-console
+      ports:
         - { protocol: TCP, port: 8080 }
 
 # ============================================================

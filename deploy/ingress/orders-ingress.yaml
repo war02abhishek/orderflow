@@ -1,0 +1,32 @@
+# Phase 3: a plain, pre-mesh Ingress -- path-based routing to `orders`
+# through ingress-nginx (infra/ingress-nginx/deploy.yaml), deliberately
+# left in place once Phase 4 adds Istio's Gateway so the two can be
+# contrasted directly: same job (get external traffic to `orders`), very
+# different feature set (no retries/circuit-breaking/traffic-splitting
+# here -- see README).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orders-ingress
+  namespace: orders
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /checkout
+            pathType: Exact
+            backend:
+              service:
+                name: orders
+                port:
+                  number: 8080
+          - path: /orders(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: orders
+                port:
+                  number: 8080
