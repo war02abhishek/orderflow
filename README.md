@@ -2,7 +2,7 @@
 
 > System design: [OrderFlow Blueprint](https://claude.ai/code/artifact/9e546f02-a666-468e-b38a-c145fb78273f) (architecture diagram, checkout saga sequence, CAP trade-off, failure/circuit-breaker handling, and the gap analysis referenced below as G1–G18)
 >
-> Learning walkthrough: [OrderFlow Field Notes](https://claude.ai/code/artifact/d7356850-5a1b-44c4-a92d-e917a24d0118) — start-to-finish, concept-first explanation of everything built through Phase 2 (nodes/clusters, NetworkPolicy/Calico, every K8s Service type, the Kafka/Outbox saga, real failure-handling proof, a guided `kubectl` tour), backed by actual verified output from the running cluster rather than hypothetical examples
+> Learning walkthrough: [OrderFlow Field Notes](https://claude.ai/code/artifact/d7356850-5a1b-44c4-a92d-e917a24d0118) — start-to-finish, concept-first explanation of everything built through Phase 3 (nodes/clusters, NetworkPolicy/Calico, every K8s Service type, the Kafka/Outbox saga, real failure-handling proof, the flash-sale Redis escalation, the Phase 3 Ingress/NetworkPolicy gap, a guided `kubectl` tour), backed by actual verified output from the running cluster rather than hypothetical examples
 
 **Status:** Phases 0–3 complete, plus the flash-sale readiness pass (Redis-fronted stock counter for `inventory`, Option C below — supersedes the earlier Option A/B pass) — all verified against a live cluster. Phase 4 (Istio service mesh) is next.
 
